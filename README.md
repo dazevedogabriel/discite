@@ -15,11 +15,13 @@
   <img alt="GUI with egui" src="https://img.shields.io/badge/GUI-egui-3aa6c5">
   <img alt="Scheduling with FSRS-6" src="https://img.shields.io/badge/scheduler-FSRS--6-8b8cf8">
   <img alt="Storage in SQLite" src="https://img.shields.io/badge/storage-SQLite-4a90c8?logo=sqlite&logoColor=white">
+  <img alt="Local AI with llama.cpp" src="https://img.shields.io/badge/AI-local%20·%20llama.cpp-6f6af8">
   <img alt="Windows and macOS" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-555">
 </p>
 
 <p align="center">
   <a href="#-features">Features</a> ·
+  <a href="#-local-ai">Local AI</a> ·
   <a href="#-how-scheduling-works">How scheduling works</a> ·
   <a href="#-getting-started">Getting started</a> ·
   <a href="#%EF%B8%8F-shortcuts">Shortcuts</a> ·
@@ -70,6 +72,9 @@ your data lives in one SQLite file on your machine.
   (Ctrl+K), and Markdown import/export.
 - **Create flashcard** (Ctrl+Shift+F) from the selected text. The card
   remembers its source page, and the page lists every card made from it.
+- **Generate with AI** (Ctrl+Shift+G): a model running on your own computer
+  suggests cards from the page, a block or the selected text. You review them
+  before anything is added (see [Local AI](#-local-ai)).
 
 ### 🗂️ Flashcards
 
@@ -119,6 +124,101 @@ your data lives in one SQLite file on your machine.
   <img src="docs/images/light.png" alt="The notebook in the light theme" width="900">
 </p>
 
+## 🤖 Local AI
+
+<p align="center">
+  <img src="docs/images/ai.png" alt="Cards suggested by the local AI: editable question-and-answer and cloze cards, each showing the note block it came from" width="900">
+</p>
+
+Discite can turn your notes into flashcards with an AI that runs **entirely on
+your computer**. Your notes are never sent anywhere: [llama.cpp](https://github.com/ggml-org/llama.cpp)
+is built into the executable, and the only connection is the one-time model
+download from Hugging Face.
+
+- **Where it is.** *Generate with AI* in the page toolbar (or in the *Insert*
+  menu on narrow windows), *AI cards from this block* in a block's ⠿ menu,
+  the button under *Linked cards*, the command palette, and **Ctrl+Shift+G**.
+  With text selected, only that passage is used.
+- **You stay in charge.** Suggestions arrive one by one in a review window.
+  Each one can be edited, unchecked or discarded, and nothing becomes a card
+  until you press *Add*. Choose how many (5, 10, 15), the kind (question and
+  answer, cloze, or mixed), the deck and the tags.
+- **Wired into the notebook.** Every card keeps a link to its page *and* to the
+  block it came from, so it shows up under *Linked cards* right away. Cards
+  that repeat ones the page already has come unchecked, with a warning.
+- **Always valid.** A grammar forces the model to answer with well-formed cards,
+  and clozes the model misplaces (`… a sentence. {{c1::term}}`) are moved back
+  onto the term.
+
+### Only what your notes say
+
+Small models sometimes "help" with facts they know but you didn't write. In a
+flashcard app that is worse than useless: you would memorize it as if it were
+your note. So every suggestion must come with **the passage of your notes that
+backs it**, and Discite checks it before showing the card:
+
+- the passage must really be in the page (small differences allowed);
+- the answer may only use words that appear in the notes (paraphrase verbs and
+  inflections are fine), and every number must match.
+
+A card that fails comes **unchecked**, with a red warning listing the words
+that are not in your notes. Each card also shows its source passage. On top
+of that, a page with little content is never asked for more cards than it has
+facts (padding was the main cause of invented cards), and the model is told
+the language of your notes.
+
+<p align="center">
+  <img src="docs/images/ai-check.png" alt="Two suggestions unchecked with the warning 'Not found in your notes', because they explain what beta blockers do while the note only lists their names" width="900">
+</p>
+
+Measured on eight pages (Portuguese and English, short and long), reading every
+card against its page:
+
+| | Before the check | With the check |
+|---|---|---|
+| Qwen3 4B: cards with facts not in the notes | 11 of 78 (14%), none flagged | 2 of 68 (3%), **both flagged** |
+| Qwen3 4B: one-sentence pages | 10 invented in 18 | 0 in 8 |
+| Qwen3 1.7B: cards with facts not in the notes | ~17 of 68 (25%), none flagged | 6 of 37, **all flagged** |
+
+The check works on words, not meaning: it catches outside facts and swapped
+answers ("increase" where the note says "reduce"), but not a wrong link made
+only with words from the note. That is why nothing is added without your
+review. To rerun the measurement:
+`DISCITE_EVAL_MODEL=<model.gguf> DISCITE_EVAL_OUT=<out.jsonl> cargo test --release eval_cards -- --ignored`.
+
+### Models
+
+Pick one in **Settings → Local AI**. It downloads once, can be paused and
+resumed, and is checked against its SHA-256 before use. All three are
+[Qwen3](https://huggingface.co/Qwen) models under the Apache 2.0 license,
+quantized to Q4_K_M by [Unsloth](https://huggingface.co/unsloth).
+
+| Model | Download | Free memory | Notes |
+|---|---|---|---|
+| Qwen3 1.7B | 1.1 GB | 4 GB | Light and fast; makes more mistakes. |
+| **Qwen3 4B Instruct** | 2.5 GB | 6 GB | **Recommended.** Good questions, clozes in the right place. |
+| Qwen3 8B | 5.0 GB | 10 GB | More precise on dense content; slow without a GPU. |
+
+<p align="center">
+  <img src="docs/images/ai-settings.png" alt="Settings → Local AI: the three models with download, use and delete buttons, the GPU switch and the detected graphics card" width="760">
+</p>
+
+### Speed
+
+The AI uses the graphics card when there is one: **Vulkan** on Windows (any
+recent NVIDIA, AMD or Intel GPU, through the driver you already have) and
+**Metal** on Apple Silicon Macs. Otherwise it runs on the processor. With the
+recommended model, ten cards from a typical page take:
+
+| Hardware | Time |
+|---|---|
+| NVIDIA RTX 3060 (Vulkan) | ~12 s |
+| Ryzen 5 5600GT, processor only | ~1–1.5 min (estimated from ~10 tokens/s) |
+
+The first generation after opening Discite also loads the model (a few seconds,
+a bit longer the first time the GPU sees it). The model leaves memory after
+five idle minutes.
+
 ## 🧠 How scheduling works
 
 FSRS models each card with three numbers:
@@ -142,8 +242,15 @@ old and new ones predict it before you apply them.
 
 ## 🚀 Getting started
 
-You need [Rust](https://rustup.rs) (stable, edition 2024). On Windows you also
-need the Visual Studio Build Tools (MSVC); on macOS, the Xcode command line tools.
+You need [Rust](https://rustup.rs) (stable, edition 2024) and, to build the
+embedded llama.cpp, [CMake](https://cmake.org) and libclang
+([LLVM](https://releases.llvm.org)).
+
+- **Windows:** the Visual Studio Build Tools with the C++ workload, LLVM
+  (set `LIBCLANG_PATH` to its `bin` folder if bindgen can't find it) and the
+  [Vulkan SDK](https://vulkan.lunarg.com/sdk/home), used only to compile the GPU
+  shaders.
+- **macOS:** the Xcode command line tools and CMake (`brew install cmake`).
 
 ```bash
 git clone https://github.com/dazevedogabriel/Discite.git discite
@@ -154,9 +261,14 @@ cargo build --release
 Run `target/release/discite.exe` (Windows) or `target/release/discite` (macOS).
 It needs nothing installed next to it.
 
+> **Windows and long paths.** Compiling the Vulkan shaders creates very deep
+> folders. If the build fails with `C1083` or "file name too long", build into
+> a short folder: `set CARGO_TARGET_DIR=C:\t` (the GitHub workflow does this).
+
 - **Your data** lives in `%APPDATA%\Discite` on Windows and in
   `~/Library/Application Support/Discite` on macOS. It holds `discite.db`
-  (SQLite), `media/` with the images, and `backups/` with automatic backups.
+  (SQLite), `media/` with the images, `backups/` with automatic backups and
+  `models/` with the AI models you downloaded.
   To try things without touching your data, point the `DISCITE_DATA`
   environment variable at another folder.
 - **Sample content.** On an empty database, the dashboard offers to load an
@@ -184,6 +296,7 @@ On macOS, Ctrl is ⌘.
 | Notebook | Ctrl B / I / U / E | Bold, italic, underline, code |
 | Notebook | Ctrl Shift H | Highlight |
 | Notebook | Ctrl Shift F | Create flashcard from selection |
+| Notebook | Ctrl Shift G | Generate cards with AI (selection or page) |
 | Notebook | Tab / Shift Tab | Indent / outdent list item |
 | Note editor | Ctrl Enter | Add or save |
 
@@ -192,7 +305,7 @@ On macOS, Ctrl is ⌘.
 Two GitHub Actions workflows build the app for both platforms:
 
 - **[`build.yml`](.github/workflows/build.yml)** builds and tests on Windows x64
-  and macOS universal (Apple Silicon + Intel, macOS 10.13 or newer). It runs on
+  and macOS universal (Apple Silicon + Intel, macOS 10.15 or newer). It runs on
   every push to `main`, on pull requests, and on demand (*Actions → Build → Run
   workflow*). The packages are attached to the run:
   - `Discite-<version>-windows-x64.zip` with `Discite.exe`;
@@ -260,6 +373,7 @@ discite/
 │   ├── stats.rs       statistics
 │   ├── media.rs       image storage
 │   ├── i18n.rs        translations loaded from locales/*.xml
+│   ├── ai/            local AI: llama.cpp engine, models and download, prompt, grammar, grounding check
 │   └── gui/           one file per screen, plus theme.rs (design tokens) and widgets.rs
 ├── locales/           en.xml and pt-BR.xml: every text the app shows
 ├── assets/            logo.svg (also the app icon) and fonts
@@ -285,6 +399,10 @@ window and app icons are generated from it.
   [rusqlite](https://github.com/rusqlite/rusqlite),
   [resvg](https://github.com/linebender/resvg) and
   [roxmltree](https://github.com/RazrFalcon/roxmltree).
+- Local AI by [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), through
+  [llama-cpp-rs](https://github.com/utilityai/llama-cpp-rs), with
+  [Qwen3](https://huggingface.co/Qwen) models (Apache 2.0) quantized by
+  [Unsloth](https://huggingface.co/unsloth).
 - Inspired by [Anki](https://apps.ankiweb.net). Discite is an independent
   project, not affiliated with Anki.
 

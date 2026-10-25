@@ -67,6 +67,7 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
                 }
             });
         });
+        super::ai::settings_section(app, ui);
         section(ui, &tr!("settings.data"), |ui| {
             row(ui, &tr!("settings.auto_backup"), |ui| {
                 if toggle(ui, &mut app.cfg.auto_backup, &tr!("settings.auto_backup_short")).clicked() {
@@ -168,7 +169,7 @@ pub fn language_menu(app: &mut App, ui: &mut Ui) {
     }
 }
 
-fn section(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui)) {
+pub(super) fn section(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui)) {
     let p = pal();
     card_frame().inner_margin(egui::Margin::symmetric(20, 18)).show(ui, |ui| {
         ui.set_width(ui.available_width());
@@ -178,7 +179,7 @@ fn section(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui)) {
     });
 }
 
-fn row(ui: &mut Ui, label_s: &str, add: impl FnOnce(&mut Ui)) {
+pub(super) fn row(ui: &mut Ui, label_s: &str, add: impl FnOnce(&mut Ui)) {
     let p = pal();
     ui.horizontal(|ui| {
         ui.set_min_height(34.0);
@@ -189,7 +190,7 @@ fn row(ui: &mut Ui, label_s: &str, add: impl FnOnce(&mut Ui)) {
     });
 }
 
-fn open_folder(path: &std::path::Path) {
+pub(super) fn open_folder(path: &std::path::Path) {
     #[cfg(windows)]
     {
         let _ = std::process::Command::new("explorer").arg(path).spawn();

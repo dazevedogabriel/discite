@@ -2,6 +2,7 @@
 
 #![cfg_attr(not(test), windows_subsystem = "windows")]
 
+mod ai;
 mod cards;
 mod db;
 mod gui;

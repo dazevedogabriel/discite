@@ -52,7 +52,7 @@ jobs:
             ## Downloads
 
             - **Windows:** `Discite-…-windows-x64.zip`. Extract it and run `Discite.exe`.
-            - **macOS** (Apple Silicon and Intel, macOS 10.13 or newer): `Discite-…-macos-universal.zip`. Extract it and drag `Discite.app` to Applications.
+            - **macOS** (Apple Silicon and Intel, macOS 10.15 or newer): `Discite-…-macos-universal.zip`. Extract it and drag `Discite.app` to Applications.
 
             ### Opening it on macOS for the first time
 

@@ -30,6 +30,7 @@ enum Cmd {
     Backup,
     CustomStudy,
     Browser(String),
+    AiCards,
 }
 
 struct Item {
@@ -75,6 +76,9 @@ fn items(app: &App, q: &str) -> Vec<Item> {
     push(tr!("palette.study_all", n = c.new + c.learn + c.review), &tr!("common.key_space"), "palette.actions", None, Cmd::StudyAll);
     push(tr!("common.add_note"), "Ctrl ⇧ A", "palette.actions", None, Cmd::AddNote);
     push(tr!("page.new_page"), "Ctrl N", "palette.actions", None, Cmd::NewPage);
+    if matches!(app.screen, Screen::Subject(_, Tab::Notebook)) && app.page.is_some() {
+        push(tr!("ai.palette"), "Ctrl ⇧ G", "palette.actions", None, Cmd::AiCards);
+    }
     push(tr!("nav.new_subject"), "", "palette.actions", None, Cmd::NewSubject);
     push(tr!("palette.custom_study"), "", "palette.actions", None, Cmd::CustomStudy);
     push(tr!("app.toggle_theme"), "", "palette.actions", None, Cmd::ToggleTheme);
@@ -125,6 +129,7 @@ fn run(app: &mut App, cmd: Cmd) {
             app.toast(tr!("toast.backup_done"));
         }
         Cmd::CustomStudy => app.modal = Some(super::modals::Modal::custom_study(None)),
+        Cmd::AiCards => super::ai::open(app, super::ai::Scope::Page),
         Cmd::Browser(q) => {
             app.browser.query = q;
             app.browser.dirty = true;

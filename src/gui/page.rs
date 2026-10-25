@@ -38,6 +38,8 @@ pub struct PageEditor {
     scroll_to: Option<i64>,
     saved_at: Option<Instant>,
     tag_edit: Option<String>,
+    /// Pedido de cartões com IA feito neste quadro (aberto depois que o editor volta para o App).
+    ai_request: Option<super::ai::Scope>,
 }
 
 #[derive(Default)]
@@ -58,6 +60,8 @@ enum Action {
     Convert(usize, BlockKind),
     SlashPick(usize, BlockKind),
     Flashcard(usize),
+    /// Cartões com IA: `None` usa a seleção (se houver) ou a página; `Some(i)`, o bloco `i`.
+    AiCards(Option<usize>),
     OpenLink(String),
     Viewer(String),
 }
@@ -104,6 +108,7 @@ impl PageEditor {
             scroll_to: None,
             saved_at: None,
             tag_edit: None,
+            ai_request: None,
         })
     }
 
@@ -514,6 +519,10 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
             actions.push(Action::Flashcard(i));
         }
     }
+    // Ctrl+Shift+G: cartões com IA da seleção ou da página.
+    if ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::G)) {
+        actions.push(Action::AiCards(None));
+    }
 
     let nav = apply_actions(app, &mut ed, actions, sid);
     // O foco no bloco novo só vale no quadro seguinte: pede esse quadro já,
@@ -524,7 +533,11 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
     if ed.autosave(&app.db) {
         app.data_version += 1;
     }
+    let ai_request = ed.ai_request.take();
     app.page = Some(ed);
+    if let Some(scope) = ai_request {
+        super::ai::open(app, scope);
+    }
     if let Some(id) = nav {
         app.open_page(id);
     }
@@ -612,6 +625,8 @@ fn toolbar(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: 
     tu.spacing_mut().item_spacing.x = 2.0;
     // Em larguras menores, Imagem/Tabela/Fórmula vão para o menu "Mais".
     let compact = bar.width() < 900.0;
+    // O botão da IA só cabe na barra larga; nas outras, fica no menu Inserir/Mais.
+    let ai_button = bar.width() >= 1180.0;
     let fidx = ed.focus.and_then(|id| ed.idx(id));
     let cur_kind = fidx.map(|i| ed.blocks[i].kind).unwrap_or(BlockKind::Paragraph);
     let label_kind = if cur_kind.is_text() { cur_kind.label() } else { BlockKind::Paragraph.label() };
@@ -662,10 +677,20 @@ fn toolbar(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: 
                 actions.push(Action::InsertAfter(at, k));
             }
         }
+        if !ai_button {
+            menu_sep(ui);
+            if menu_item_ex(ui, &tr!("ai.button"), None, false, Some(&keys("Ctrl ⇧ G"))).clicked() {
+                actions.push(Action::AiCards(None));
+            }
+        }
     });
     tu.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
         if button_kbd(ui, &tr!("page.create_flashcard"), if compact { None } else { Some("Ctrl ⇧ F") }, Btn::Primary, 30.0).clicked() {
             actions.push(Action::Flashcard(at));
+        }
+        if ai_button && button(ui, &tr!("ai.button"), Btn::Secondary, 30.0).on_hover_text(keys(&tr!("ai.button_tip"))).clicked() {
+            actions.push(Action::AiCards(None));
         }
     });
     let _ = (app, p);
@@ -1103,7 +1128,11 @@ fn slash_menu(ed: &mut PageEditor, ui: &mut Ui, i: usize, rect: Rect, sel: usize
 fn gutter(ed: &mut PageEditor, ui: &mut Ui, i: usize, rect: Rect, actions: &mut Vec<Action>) {
     let p = pal();
     let hover_zone = Rect::from_min_max(rect.min - vec2(56.0, 0.0), rect.max);
-    let hovered = ui.rect_contains_pointer(hover_zone) || ed.drag == Some(ed.blocks[i].id);
+    let handle_id = Id::unique(("handle", ed.blocks[i].id));
+    // Com o menu aberto a alça continua existindo mesmo com o mouse fora do
+    // bloco; sem ela o menu, que nasce da alça, fecharia no meio do caminho.
+    let menu_open = egui::Popup::is_id_open(ui.ctx(), handle_id.with("popup"));
+    let hovered = ui.rect_contains_pointer(hover_zone) || ed.drag == Some(ed.blocks[i].id) || menu_open;
     if !hovered {
         return;
     }
@@ -1111,7 +1140,7 @@ fn gutter(ed: &mut PageEditor, ui: &mut Ui, i: usize, rect: Rect, actions: &mut 
     let plus = Rect::from_center_size(pos2(rect.left() - 40.0, y), vec2(20.0, 22.0));
     let handle = Rect::from_center_size(pos2(rect.left() - 20.0, y), vec2(18.0, 22.0));
     let pr = ui.interact(plus, Id::unique(("plus", ed.blocks[i].id)), Sense::click());
-    let hr = ui.interact(handle, Id::unique(("handle", ed.blocks[i].id)), Sense::click_and_drag());
+    let hr = ui.interact(handle, handle_id, Sense::click_and_drag());
     text(ui.painter(), plus.center(), Align2::CENTER_CENTER, "+", serif(15.0, W::Regular), if pr.hovered() { p.text } else { p.dim }, 20.0);
     grip_icon(ui.painter(), handle.center(), if hr.hovered() { p.text } else { p.dim });
     a11y(&pr, egui::accesskit::Role::Button, &tr!("page.insert_below"), None);
@@ -1134,6 +1163,9 @@ fn gutter(ed: &mut PageEditor, ui: &mut Ui, i: usize, rect: Rect, actions: &mut 
         });
         if menu_item(ui, &tr!("page.flashcard_from_block"), false).clicked() {
             actions.push(Action::Flashcard(i));
+        }
+        if menu_item(ui, &tr!("ai.from_this_block"), false).clicked() {
+            actions.push(Action::AiCards(Some(i)));
         }
         if menu_item(ui, &tr!("page.duplicate"), false).clicked() {
             actions.push(Action::Duplicate(i));
@@ -1497,6 +1529,21 @@ fn apply_actions(app: &mut App, ed: &mut PageEditor, actions: Vec<Action>, sid: 
                     None => app.toast(tr!("toast.create_deck_first")),
                 }
             }
+            Action::AiCards(at) => {
+                let scope = match at {
+                    Some(i) => ed.blocks.get(i).map(|b| super::ai::Scope::Block(b.id)),
+                    // Seleção dentro de um bloco de texto, se houver.
+                    None => match ed.sel {
+                        Some((id, r)) if r.primary.index != r.secondary.index => ed.idx(id).map(|i| {
+                            let t = &ed.blocks[i].text;
+                            let (a, c) = (r.primary.index.0.min(r.secondary.index.0), r.primary.index.0.max(r.secondary.index.0));
+                            super::ai::Scope::Selection(id, t[rich::byte_of_char(t, a)..rich::byte_of_char(t, c)].to_owned())
+                        }),
+                        _ => None,
+                    },
+                };
+                ed.ai_request = Some(scope.unwrap_or(super::ai::Scope::Page));
+            }
             Action::OpenLink(target) => {
                 ed.flush(&app.db);
                 match app.db.page_by_title(&target) {
@@ -1623,13 +1670,14 @@ fn page_aside(app: &mut App, ui: &mut Ui) {
                 }
             }
         }
-        if !all_cards.is_empty() {
-            ui.add_space(2.0);
-            let w = ui.available_width();
-            if button_sized(ui, &tr_n!("page.study_these", all_cards.len()), None, Btn::Secondary, vec2(w, 32.0), true).clicked() {
-                let ids: Vec<i64> = all_cards.iter().map(|c| c.id).collect();
-                review::start(app, review::Scope::Cards(ids, tr!("page.cards_of", title = title)));
-            }
+        ui.add_space(2.0);
+        let w = ui.available_width();
+        if !all_cards.is_empty() && button_sized(ui, &tr_n!("page.study_these", all_cards.len()), None, Btn::Secondary, vec2(w, 32.0), true).clicked() {
+            let ids: Vec<i64> = all_cards.iter().map(|c| c.id).collect();
+            review::start(app, review::Scope::Cards(ids, tr!("page.cards_of", title = title)));
+        }
+        if button_sized(ui, &tr!("ai.button"), None, Btn::Ghost, vec2(w, 32.0), true).on_hover_text(keys(&tr!("ai.button_tip"))).clicked() {
+            super::ai::open(app, super::ai::Scope::Page);
         }
     });
 }

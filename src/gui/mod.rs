@@ -4,6 +4,7 @@
 //! Sessão de revisão, Opções do preset, Configurações, editor de nota,
 //! paleta de comandos e avisos.
 
+mod ai;
 mod browser;
 mod charts;
 mod dashboard;
@@ -94,11 +95,22 @@ pub struct Settings {
     pub lang: Option<String>,
     /// No caderno a barra lateral fica recolhida (como no design) até o usuário abrir.
     pub notebook_sidebar_open: bool,
+    /// IA local: modelo escolhido, uso da GPU e o último pedido (quantos, que tipo).
+    pub ai_model: String,
+    pub ai_gpu: bool,
+    pub ai_count: u32,
+    pub ai_style: crate::ai::prompt::Style,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { dark: true, rollover_hour: 4, sidebar_collapsed: false, auto_backup: true, last_backup: 0, reading_width: 640.0, answer_cap_secs: 60, last_deck: None, notebook_sidebar_open: false, lang: Some("en".into()) }
+        Settings { dark: true, rollover_hour: 4, sidebar_collapsed: false, auto_backup: true, last_backup: 0, reading_width: 640.0, answer_cap_secs: 60, last_deck: None, notebook_sidebar_open: false,
+            lang: Some("en".into()),
+            ai_model: crate::ai::models::DEFAULT_MODEL.into(),
+            ai_gpu: true,
+            ai_count: 10,
+            ai_style: Default::default(),
+        }
     }
 }
 
@@ -154,6 +166,7 @@ pub struct App {
     pub pasted_image: Option<String>,
     /// Arquivos soltos na janela neste quadro.
     pub dropped: Vec<std::path::PathBuf>,
+    pub ai: ai::AiState,
 }
 
 impl App {
@@ -193,6 +206,7 @@ impl App {
             subject_view: Default::default(),
             pasted_image: None,
             dropped: vec![],
+            ai: Default::default(),
             cfg,
         };
         let _ = app.db.unbury();
@@ -488,7 +502,7 @@ impl App {
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
         let typing = ctx.memory(|m| m.focused().is_some()) && ctx.egui_wants_keyboard_input();
-        let overlay = self.modal.is_some() || self.note_editor.is_some() || self.palette.is_some();
+        let overlay = self.modal.is_some() || self.note_editor.is_some() || self.palette.is_some() || self.ai.review.is_some();
         let cmd = |k: Key| ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, k));
         let cmd_shift = |k: Key| ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, k));
         if cmd(Key::K) {
@@ -938,6 +952,7 @@ impl eframe::App for App {
         });
 
         note_editor::show(self, &ctx);
+        ai::show(self, &ctx);
         modals::show(self, &ctx);
         palette::show(self, &ctx);
         toasts(self, &ctx);
