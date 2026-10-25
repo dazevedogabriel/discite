@@ -1,0 +1,21 @@
+# Saída do Cargo (o Cargo.lock fica no repositório: os workflows compilam com --locked)
+/target/
+
+# Pacotes montados localmente
+/dist/
+*.zip
+*.dmg
+
+# Dados de teste, se DISCITE_DATA apontar para dentro do projeto
+/data/
+*.db
+*.db-wal
+*.db-shm
+
+# Sistema e editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp

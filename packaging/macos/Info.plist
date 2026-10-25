@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Modelo do Info.plist do Discite.app. O workflow de build troca __VERSION__ pela versão do Cargo.toml. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Discite</string>
+	<key>CFBundleDisplayName</key>
+	<string>Discite</string>
+	<key>CFBundleIdentifier</key>
+	<string>app.discite.Discite</string>
+	<key>CFBundleExecutable</key>
+	<string>discite</string>
+	<key>CFBundleIconFile</key>
+	<string>Discite</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__VERSION__</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>pt_BR</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>10.13</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.education</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+</dict>
+</plist>

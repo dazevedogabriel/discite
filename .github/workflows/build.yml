@@ -1,0 +1,105 @@
+# Compila o Discite para Windows (x64) e macOS (universal: Apple Silicon + Intel)
+# e guarda os pacotes como artefatos da execução.
+#
+# Roda a cada push na main, em pull requests, manualmente (aba Actions → Build →
+# Run workflow) e é chamado pelo workflow de release.
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Testes
+        run: cargo test --release --locked
+
+      - name: Compilar
+        run: cargo build --release --locked
+
+      - name: Empacotar
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/discite.exe dist/Discite.exe
+          Compress-Archive -Path dist/Discite.exe -DestinationPath "Discite-$version-windows-x64.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: discite-windows
+          path: Discite-*-windows-x64.zip
+          if-no-files-found: error
+
+  macos:
+    name: macOS (universal)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Testes
+        run: cargo test --release --locked
+
+      # Cada arquitetura com o macOS mínimo que ela suporta.
+      - name: Compilar (Apple Silicon)
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+        run: cargo build --release --locked --target aarch64-apple-darwin
+
+      - name: Compilar (Intel)
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "10.13"
+        run: cargo build --release --locked --target x86_64-apple-darwin
+
+      - name: Montar Discite.app
+        run: |
+          set -euo pipefail
+          VERSION=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          APP=dist/Discite.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+
+          # Um executável só, com as duas arquiteturas.
+          lipo -create -output "$APP/Contents/MacOS/discite" \
+            target/aarch64-apple-darwin/release/discite \
+            target/x86_64-apple-darwin/release/discite
+
+          # O build.rs gera o ícone a partir de assets/logo.svg (o mais recente, se o cache tiver vários).
+          ICNS=$(ls -t $(find target/aarch64-apple-darwin/release/build -name Discite.icns) | head -n 1)
+          cp "$ICNS" "$APP/Contents/Resources/Discite.icns"
+          sed "s/__VERSION__/$VERSION/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
+
+          # Sem conta de desenvolvedor: assinatura ad hoc, que o Apple Silicon exige
+          # para abrir o app. O Gatekeeper ainda pede "Abrir" na primeira vez.
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --verbose "$APP"
+
+          # ditto preserva a estrutura e os atributos do .app dentro do zip.
+          ditto -c -k --keepParent "$APP" "Discite-$VERSION-macos-universal.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: discite-macos
+          path: Discite-*-macos-universal.zip
+          if-no-files-found: error

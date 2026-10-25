@@ -1,0 +1,67 @@
+# Publica uma release no GitHub com os pacotes de Windows e macOS.
+#
+# Para lançar uma versão: ajuste `version` no Cargo.toml, faça o commit e envie
+# uma tag com o mesmo número:
+#
+#   git tag v0.1.0
+#   git push origin v0.1.0
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  check-version:
+    name: Conferir versão
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag igual à versão do Cargo.toml
+        run: |
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)
+          if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "::error::A tag ${GITHUB_REF_NAME} não bate com a versão ${VERSION} do Cargo.toml (esperado v${VERSION})."
+            exit 1
+          fi
+
+  build:
+    needs: check-version
+    uses: ./.github/workflows/build.yml
+
+  release:
+    name: Publicar release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## Downloads
+
+            - **Windows:** `Discite-…-windows-x64.zip`. Extraia e rode o `Discite.exe`.
+            - **macOS** (Apple Silicon e Intel, macOS 10.13 ou mais novo): `Discite-…-macos-universal.zip`. Extraia e arraste o `Discite.app` para Aplicativos.
+
+            ### Abrir no macOS pela primeira vez
+
+            O app não é assinado pela Apple, então o macOS bloqueia a primeira abertura.
+
+            - Até o macOS 14: clique com o botão direito em **Discite.app** → **Abrir** → **Abrir**.
+            - No macOS 15 ou mais novo: tente abrir uma vez e depois vá em **Ajustes do Sistema → Privacidade e Segurança** → **Abrir Mesmo Assim**.
+            - Se o macOS disser que o app "está danificado", rode no Terminal e depois abra normalmente:
+
+              ```
+              xattr -dr com.apple.quarantine /Applications/Discite.app
+              ```
