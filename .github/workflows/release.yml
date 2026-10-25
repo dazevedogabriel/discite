@@ -17,16 +17,16 @@ permissions:
 
 jobs:
   check-version:
-    name: Conferir versão
+    name: Check version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Tag igual à versão do Cargo.toml
+      - name: Tag matches the Cargo.toml version
         run: |
           VERSION=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)
           if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
-            echo "::error::A tag ${GITHUB_REF_NAME} não bate com a versão ${VERSION} do Cargo.toml (esperado v${VERSION})."
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match version ${VERSION} in Cargo.toml (expected v${VERSION})."
             exit 1
           fi
 
@@ -35,7 +35,7 @@ jobs:
     uses: ./.github/workflows/build.yml
 
   release:
-    name: Publicar release
+    name: Publish release
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -51,16 +51,16 @@ jobs:
           body: |
             ## Downloads
 
-            - **Windows:** `Discite-…-windows-x64.zip`. Extraia e rode o `Discite.exe`.
-            - **macOS** (Apple Silicon e Intel, macOS 10.13 ou mais novo): `Discite-…-macos-universal.zip`. Extraia e arraste o `Discite.app` para Aplicativos.
+            - **Windows:** `Discite-…-windows-x64.zip`. Extract it and run `Discite.exe`.
+            - **macOS** (Apple Silicon and Intel, macOS 10.13 or newer): `Discite-…-macos-universal.zip`. Extract it and drag `Discite.app` to Applications.
 
-            ### Abrir no macOS pela primeira vez
+            ### Opening it on macOS for the first time
 
-            O app não é assinado pela Apple, então o macOS bloqueia a primeira abertura.
+            The app is not signed by Apple, so macOS blocks the first launch.
 
-            - Até o macOS 14: clique com o botão direito em **Discite.app** → **Abrir** → **Abrir**.
-            - No macOS 15 ou mais novo: tente abrir uma vez e depois vá em **Ajustes do Sistema → Privacidade e Segurança** → **Abrir Mesmo Assim**.
-            - Se o macOS disser que o app "está danificado", rode no Terminal e depois abra normalmente:
+            - macOS 14 or older: right-click **Discite.app** → **Open** → **Open**.
+            - macOS 15 or newer: try to open it once, then go to **System Settings → Privacy & Security** → **Open Anyway**.
+            - If macOS says the app "is damaged", run this in Terminal and then open it normally:
 
               ```
               xattr -dr com.apple.quarantine /Applications/Discite.app

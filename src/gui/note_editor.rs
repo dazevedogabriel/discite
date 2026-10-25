@@ -181,7 +181,7 @@ fn body(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui, rect: Rect, close: &mut
     if cresp.hovered() {
         ui.painter().rect_filled(close_r, CornerRadius::same(6), p.hover);
     }
-    text(ui.painter(), close_r.center(), Align2::CENTER_CENTER, "✕", serif(13.0, W::Regular), if cresp.hovered() { p.text } else { p.muted }, 30.0);
+    close_icon(ui.painter(), close_r.center(), 13.0, if cresp.hovered() { p.text } else { p.muted });
     a11y(&cresp, egui::accesskit::Role::Button, &tr!("app.close_dialog"), None);
     if cresp.clicked() {
         *close = true;
@@ -305,7 +305,7 @@ fn left_column(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui) {
         cu.spacing_mut().item_spacing.x = 6.0;
         let tags = ed.note.tag_list();
         for t in &tags {
-            if chip(&mut cu, &format!("{t} ✕"), false, 22.0).on_hover_text(tr!("note.remove_tag")).clicked() {
+            if chip(&mut cu, &format!("{t} ×"), false, 22.0).on_hover_text(tr!("note.remove_tag")).clicked() {
                 ed.note.tags = tags.iter().filter(|x| *x != t).cloned().collect::<Vec<_>>().join(" ");
             }
         }

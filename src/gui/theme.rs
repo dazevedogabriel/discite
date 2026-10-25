@@ -196,8 +196,13 @@ pub fn install_fonts(ctx: &egui::Context) {
     add(&mut fonts, "lit-semi-italic", include_bytes!("../../assets/fonts/Literata-SemiBoldItalic.ttf"));
     add(&mut fonts, "jb-mono", include_bytes!("../../assets/fonts/JetBrainsMono-400.ttf"));
 
-    // As fontes do egui ficam de reserva para símbolos (▾ › ✕ ∑…).
-    let fallback = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    // As fontes do egui ficam de reserva para símbolos (▾ › ◐ ⇧ ∑…). A Hack (a
+    // monoespaçada do egui) cobre setas e formas geométricas; sem ela esses
+    // caracteres dependeriam das fontes do sistema, que no macOS não os têm.
+    let mut fallback = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
+    if !fallback.iter().any(|f| f == "Hack") {
+        fallback.push("Hack".to_owned());
+    }
     let family = |first: &str| {
         let mut v = vec![first.to_owned()];
         v.extend(fallback.iter().cloned());
@@ -299,6 +304,33 @@ pub fn line(painter: &Painter, s: &str, font: FontId, color: Color32, max_w: f32
 }
 
 /// Pinta uma linha ancorada em `pos`; devolve o retângulo.
+/// Lupa desenhada (o ⌕ não existe nas fontes embutidas).
+pub fn search_icon(painter: &Painter, center: Pos2, size: f32, color: Color32) {
+    let r = size * 0.3;
+    let c = center + egui::vec2(-size * 0.08, -size * 0.08);
+    let stroke = Stroke::new((size * 0.09).max(1.2), color);
+    painter.circle_stroke(c, r, stroke);
+    let d = std::f32::consts::FRAC_1_SQRT_2;
+    painter.line_segment([c + egui::vec2(r * d, r * d), c + egui::vec2(r * d + size * 0.22, r * d + size * 0.22)], stroke);
+}
+
+/// "×" desenhado, para botões de fechar e remover.
+pub fn close_icon(painter: &Painter, center: Pos2, size: f32, color: Color32) {
+    let h = size * 0.3;
+    let stroke = Stroke::new((size * 0.1).max(1.2), color);
+    painter.line_segment([center + egui::vec2(-h, -h), center + egui::vec2(h, h)], stroke);
+    painter.line_segment([center + egui::vec2(-h, h), center + egui::vec2(h, -h)], stroke);
+}
+
+/// Alça de arrastar: duas colunas de três pontos.
+pub fn grip_icon(painter: &Painter, center: Pos2, color: Color32) {
+    for x in [-2.5, 2.5] {
+        for y in [-5.0, 0.0, 5.0] {
+            painter.circle_filled(center + egui::vec2(x, y), 1.3, color);
+        }
+    }
+}
+
 pub fn text(painter: &Painter, pos: Pos2, align: Align2, s: &str, font: FontId, color: Color32, max_w: f32) -> Rect {
     let g = line(painter, s, font, color, max_w, 0.0);
     let rect = align.anchor_size(pos, g.size());

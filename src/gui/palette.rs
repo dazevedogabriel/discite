@@ -181,7 +181,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         egui::Frame::NONE.fill(p.card).stroke(Stroke::new(1.0, p.border_control)).corner_radius(14).shadow(egui::Shadow { offset: [0, 24], blur: 64, spread: 0, color: Color32::from_black_alpha(if p.dark { 140 } else { 46 }) }).show(ui, |ui| {
             ui.set_width(w);
             let (r, _) = ui.allocate_exact_size(vec2(w, 54.0), Sense::hover());
-            text(ui.painter(), pos2(r.left() + 20.0, r.center().y), Align2::LEFT_CENTER, "⌕", serif(17.0, W::Regular), p.muted, 20.0);
+            search_icon(ui.painter(), pos2(r.left() + 26.0, r.center().y), 17.0, p.muted);
             let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(pos2(r.left() + 44.0, r.top()), pos2(r.right() - 70.0, r.bottom()))).layout(egui::Layout::left_to_right(egui::Align::Center)));
             let resp = cu.add(egui::TextEdit::singleline(&mut pal_state.query).frame(egui::Frame::NONE).font(serif(16.0, W::Regular)).hint_text(egui::RichText::new(tr!("palette.hint")).italics().color(p.dim)).desired_width(w - 120.0));
             if !pal_state.focused {

@@ -1113,7 +1113,7 @@ fn gutter(ed: &mut PageEditor, ui: &mut Ui, i: usize, rect: Rect, actions: &mut 
     let pr = ui.interact(plus, Id::unique(("plus", ed.blocks[i].id)), Sense::click());
     let hr = ui.interact(handle, Id::unique(("handle", ed.blocks[i].id)), Sense::click_and_drag());
     text(ui.painter(), plus.center(), Align2::CENTER_CENTER, "+", serif(15.0, W::Regular), if pr.hovered() { p.text } else { p.dim }, 20.0);
-    text(ui.painter(), handle.center(), Align2::CENTER_CENTER, "⋮⋮", serif(12.0, W::Regular), if hr.hovered() { p.text } else { p.dim }, 20.0);
+    grip_icon(ui.painter(), handle.center(), if hr.hovered() { p.text } else { p.dim });
     a11y(&pr, egui::accesskit::Role::Button, &tr!("page.insert_below"), None);
     a11y(&hr, egui::accesskit::Role::Button, &tr!("page.drag_or_menu"), None);
     if pr.on_hover_text(tr!("page.insert_below")).clicked() {
@@ -1217,7 +1217,7 @@ fn image_block(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, i: usize, w: f32
             if resp.hovered() {
                 ui.painter().rect_filled(r, CornerRadius::same(6), soft(p.again, 0.15));
             }
-            text(ui.painter(), r.center(), Align2::CENTER_CENTER, "✕", serif(12.0, W::Regular), p.again, 30.0);
+            close_icon(ui.painter(), r.center(), 12.0, p.again);
             if resp.on_hover_text(tr!("page.remove_image")).clicked() {
                 actions.push(Action::Delete(i));
             }

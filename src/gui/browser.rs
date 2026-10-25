@@ -300,7 +300,7 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
     if focused {
         su.painter().rect_stroke(sr.expand(2.0), CornerRadius::same(10), Stroke::new(3.0, p.accent_soft), StrokeKind::Inside);
     }
-    text(su.painter(), pos2(sr.left() + 14.0, sr.center().y), Align2::LEFT_CENTER, "⌕", serif(15.0, W::Regular), p.muted, 20.0);
+    search_icon(su.painter(), pos2(sr.left() + 19.0, sr.center().y), 15.0, p.muted);
     let mut tu = su.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(pos2(sr.left() + 36.0, sr.top()), pos2(sr.right() - 70.0, sr.bottom()))).layout(egui::Layout::left_to_right(egui::Align::Center)));
     let mut lay = query_layouter();
     let resp = tu.add(

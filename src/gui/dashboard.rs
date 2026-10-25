@@ -56,7 +56,7 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
         // "Buscar ou executar…" abre a paleta.
         let (r, resp) = ui.allocate_exact_size(vec2(300.0, 36.0), Sense::click());
         ui.painter().rect(r, CornerRadius::same(8), p.input, Stroke::new(1.0, if resp.hovered() { p.border_strong } else { p.border_control }), StrokeKind::Inside);
-        text(ui.painter(), pos2(r.left() + 14.0, r.center().y), Align2::LEFT_CENTER, "⌕", serif(15.0, W::Regular), p.muted, 20.0);
+        search_icon(ui.painter(), pos2(r.left() + 19.0, r.center().y), 15.0, p.muted);
         text(ui.painter(), pos2(r.left() + 34.0, r.center().y), Align2::LEFT_CENTER, &tr!("dash.search"), serif(13.0, W::Italic), p.muted, 200.0);
         kbd(ui.painter(), pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, "Ctrl K");
         a11y(&resp, egui::accesskit::Role::Button, &tr!("dash.open_palette"), None);

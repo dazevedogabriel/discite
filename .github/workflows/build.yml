@@ -27,13 +27,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Testes
+      - name: Test
         run: cargo test --release --locked
 
-      - name: Compilar
+      - name: Build
         run: cargo build --release --locked
 
-      - name: Empacotar
+      - name: Package
         shell: pwsh
         run: |
           $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
@@ -59,21 +59,21 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Testes
+      - name: Test
         run: cargo test --release --locked
 
       # Cada arquitetura com o macOS mínimo que ela suporta.
-      - name: Compilar (Apple Silicon)
+      - name: Build (Apple Silicon)
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: cargo build --release --locked --target aarch64-apple-darwin
 
-      - name: Compilar (Intel)
+      - name: Build (Intel)
         env:
           MACOSX_DEPLOYMENT_TARGET: "10.13"
         run: cargo build --release --locked --target x86_64-apple-darwin
 
-      - name: Montar Discite.app
+      - name: Assemble Discite.app
         run: |
           set -euo pipefail
           VERSION=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["packages"][0]["version"])')

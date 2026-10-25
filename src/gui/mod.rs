@@ -547,13 +547,17 @@ fn title_bar(app: &mut App, ui: &mut egui::Ui) {
         ctx.send_viewport_cmd(ViewportCommand::StartDrag);
     }
 
-    let mark_x = if MAC { rect.left() + 92.0 } else { rect.left() + 21.5 };
-    let mark = Rect::from_center_size(pos2(mark_x, rect.center().y), vec2(20.0, 20.0));
-    logo(ui, mark);
-    caps_sized(&painter, pos2(mark.right() + 10.0, rect.center().y), Align2::LEFT_CENTER, &format!("Discite {VERSION}"), 11.0, p.dim);
+    // No Mac a barra fica fina como a nativa, sem logo nem nome (o logo vai para a barra lateral).
+    if !MAC {
+        let mark = Rect::from_center_size(pos2(rect.left() + 21.5, rect.center().y), vec2(20.0, 20.0));
+        logo(ui, mark);
+        caps_sized(&painter, pos2(mark.right() + 10.0, rect.center().y), Align2::LEFT_CENTER, &format!("Discite {VERSION}"), 11.0, p.dim);
+    }
+    let btn_h = rect.height() - 10.0;
+    let btn_top = rect.top() + 5.0;
 
     // Tema claro/escuro.
-    let theme_r = Rect::from_min_size(pos2(buttons_left - theme_w - 60.0, rect.top() + 5.0), vec2(theme_w, 28.0));
+    let theme_r = Rect::from_min_size(pos2(buttons_left - theme_w - 60.0, btn_top), vec2(theme_w, btn_h));
     let tresp = ui.interact(theme_r, ui.scope_id().with("theme"), Sense::click());
     if tresp.hovered() {
         painter.rect_filled(theme_r, CornerRadius::same(6), p.hover);
@@ -569,7 +573,7 @@ fn title_bar(app: &mut App, ui: &mut egui::Ui) {
     // Idioma: o código atual; clicar abre a lista de idiomas.
     let code = crate::i18n::current().to_uppercase();
     let lw = text_width(&painter, &code, serif(11.0, W::Semi)) + 20.0;
-    let lr = Rect::from_min_size(pos2(buttons_left - 8.0 - lw, rect.top() + 5.0), vec2(lw, 28.0));
+    let lr = Rect::from_min_size(pos2(buttons_left - 8.0 - lw, btn_top), vec2(lw, btn_h));
     let lresp = ui.interact(lr, ui.scope_id().with("lang"), Sense::click());
     if lresp.hovered() {
         painter.rect_filled(lr, CornerRadius::same(6), p.hover);
@@ -673,7 +677,13 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
     {
         let (r, _) = ui.allocate_exact_size(vec2(inner.width(), 52.0), Sense::hover());
         let g1 = line(ui.painter(), "Dis", serif(25.0, W::Bold), p.text, 200.0, -0.5);
-        let x0 = r.left() + 6.0;
+        // No Mac a barra de título é só a faixa dos semáforos, então o logo vem para cá.
+        let x0 = if MAC {
+            logo(ui, Rect::from_min_size(pos2(r.left() + 4.0, r.top() + 3.0), vec2(40.0, 40.0)));
+            r.left() + 54.0
+        } else {
+            r.left() + 6.0
+        };
         ui.painter().galley(pos2(x0, r.top()), g1.clone(), p.text);
         let g2 = line(ui.painter(), "cite", serif(25.0, W::SemiItalic), p.accent, 200.0, -0.5);
         ui.painter().galley(pos2(x0 + g1.size().x, r.top()), g2, p.accent);
@@ -904,7 +914,8 @@ impl eframe::App for App {
         }
         preset::poll_jobs(self);
 
-        egui::Panel::top("titlebar").exact_size(38.0).frame(egui::Frame::NONE).show_separator_line(false).show(ui, |ui| title_bar(self, ui));
+        // 28 pt no Mac: a altura da barra nativa, com os semáforos centralizados.
+        egui::Panel::top("titlebar").exact_size(if MAC { 28.0 } else { 38.0 }).frame(egui::Frame::NONE).show_separator_line(false).show(ui, |ui| title_bar(self, ui));
 
         let review = self.screen == Screen::Review;
         if !review {
