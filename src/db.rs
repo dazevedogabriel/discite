@@ -234,23 +234,23 @@ impl BlockKind {
     pub fn is_list(self) -> bool {
         matches!(self, BlockKind::Bullet | BlockKind::Numbered | BlockKind::Check)
     }
-    pub fn label(self) -> &'static str {
-        match self {
-            BlockKind::Paragraph => "Parágrafo",
-            BlockKind::H1 => "Título 1",
-            BlockKind::H2 => "Título 2",
-            BlockKind::H3 => "Título 3",
-            BlockKind::Bullet => "Lista com marcadores",
-            BlockKind::Numbered => "Lista numerada",
-            BlockKind::Check => "Checklist",
-            BlockKind::Quote => "Citação",
-            BlockKind::Code => "Bloco de código",
-            BlockKind::Callout => "Destaque (dica)",
-            BlockKind::Image => "Imagem",
-            BlockKind::Table => "Tabela",
-            BlockKind::Divider => "Divisor",
-            BlockKind::Formula => "Fórmula (LaTeX)",
-        }
+    pub fn label(self) -> String {
+        crate::tr!(match self {
+            BlockKind::Paragraph => "block.paragraph",
+            BlockKind::H1 => "block.h1",
+            BlockKind::H2 => "block.h2",
+            BlockKind::H3 => "block.h3",
+            BlockKind::Bullet => "block.bullet",
+            BlockKind::Numbered => "block.numbered",
+            BlockKind::Check => "block.check",
+            BlockKind::Quote => "block.quote",
+            BlockKind::Code => "block.code",
+            BlockKind::Callout => "block.callout",
+            BlockKind::Image => "block.image",
+            BlockKind::Table => "block.table",
+            BlockKind::Divider => "block.divider",
+            BlockKind::Formula => "block.formula",
+        })
     }
 }
 
@@ -458,7 +458,7 @@ fn ids_sql(ids: &[i64]) -> String {
 
 impl Db {
     pub fn open(root: &Path) -> Result<Db> {
-        std::fs::create_dir_all(root).with_context(|| format!("Não foi possível criar {}", root.display()))?;
+        std::fs::create_dir_all(root).with_context(|| crate::tr!("error.create_folder", path = root.display()))?;
         // Restauração agendada nas Configurações: troca o banco antes de abri-lo.
         let pending = root.join("restore.pending");
         if let Ok(src) = std::fs::read_to_string(&pending) {
@@ -471,19 +471,19 @@ impl Db {
                 for ext in ["-wal", "-shm"] {
                     let _ = std::fs::remove_file(root.join(format!("discite.db{ext}")));
                 }
-                std::fs::copy(&src, &db).context("Não foi possível restaurar o backup")?;
+                std::fs::copy(&src, &db).with_context(|| crate::tr!("error.restore"))?;
             }
             let _ = std::fs::remove_file(&pending);
         }
-        let conn = Connection::open(root.join("discite.db")).context("Não foi possível abrir discite.db")?;
+        let conn = Connection::open(root.join("discite.db")).with_context(|| crate::tr!("error.open_db"))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL;")?;
         conn.execute_batch(SCHEMA)?;
         conn.execute_batch("PRAGMA user_version = 1;")?;
         let db = Db { conn, root: root.to_owned() };
         if db.list_presets()?.is_empty() {
             db.conn.execute(
-                "INSERT INTO presets (id, name, config, params, updated_at) VALUES (1, 'Padrão', ?1, '[]', ?2)",
-                params![serde_json::to_string(&PresetConfig::default())?, srs::now_ms()],
+                "INSERT INTO presets (id, name, config, params, updated_at) VALUES (1, ?3, ?1, '[]', ?2)",
+                params![serde_json::to_string(&PresetConfig::default())?, srs::now_ms(), crate::tr!("preset.default_name")],
             )?;
         }
         Ok(db)

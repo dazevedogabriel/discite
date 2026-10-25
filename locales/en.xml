@@ -1,0 +1,779 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Discite — English
+
+  To add a translation: copy this file, change `code` and `name` on
+  <language>, translate only the text between the tags (never the `key`) and
+  save it as <code>.xml in the "locales" folder inside the Discite data folder
+  (%APPDATA%\Discite\locales on Windows, ~/Library/Application Support/Discite/locales
+  on macOS) or in a "locales" folder next to the executable. The language shows
+  up in Settings → Language the next time Discite starts.
+
+  {name} is replaced by a value when the text is shown: keep it.
+  <plural>: <one> when the number is 1, <other> otherwise.
+-->
+<language code="en" name="English">
+
+  <!-- Number formats -->
+  <string key="format.decimal">.</string>
+  <string key="format.thousands">,</string>
+
+  <!-- Dates and times -->
+  <string key="date.long">{weekday}, {month} {day}</string>
+  <string key="date.short">{month} {day}</string>
+
+  <!-- Months -->
+  <string key="month.jan">January</string>
+  <string key="month.feb">February</string>
+  <string key="month.mar">March</string>
+  <string key="month.apr">April</string>
+  <string key="month.may">May</string>
+  <string key="month.jun">June</string>
+  <string key="month.jul">July</string>
+  <string key="month.aug">August</string>
+  <string key="month.sep">September</string>
+  <string key="month.oct">October</string>
+  <string key="month.nov">November</string>
+  <string key="month.dec">December</string>
+
+  <!-- Months (short) -->
+  <string key="month_short.jan">Jan</string>
+  <string key="month_short.feb">Feb</string>
+  <string key="month_short.mar">Mar</string>
+  <string key="month_short.apr">Apr</string>
+  <string key="month_short.may">May</string>
+  <string key="month_short.jun">Jun</string>
+  <string key="month_short.jul">Jul</string>
+  <string key="month_short.aug">Aug</string>
+  <string key="month_short.sep">Sep</string>
+  <string key="month_short.oct">Oct</string>
+  <string key="month_short.nov">Nov</string>
+  <string key="month_short.dec">Dec</string>
+
+  <!-- Weekdays -->
+  <string key="weekday.mon">Monday</string>
+  <string key="weekday.tue">Tuesday</string>
+  <string key="weekday.wed">Wednesday</string>
+  <string key="weekday.thu">Thursday</string>
+  <string key="weekday.fri">Friday</string>
+  <string key="weekday.sat">Saturday</string>
+  <string key="weekday.sun">Sunday</string>
+
+  <!-- Weekdays (short) -->
+  <string key="weekday_short.mon">Mon</string>
+  <string key="weekday_short.tue">Tue</string>
+  <string key="weekday_short.wed">Wed</string>
+  <string key="weekday_short.thu">Thu</string>
+  <string key="weekday_short.fri">Fri</string>
+  <string key="weekday_short.sat">Sat</string>
+  <string key="weekday_short.sun">Sun</string>
+
+  <!-- Relative times and durations -->
+  <string key="time.under_minute">&lt; 1 min</string>
+  <string key="time.minutes">{n} min</string>
+  <string key="time.hours">{n} h</string>
+  <string key="time.days">{n} d</string>
+  <string key="time.month">{n} month</string>
+  <string key="time.months">{n} months</string>
+  <string key="time.year">{n} year</string>
+  <string key="time.years">{n} years</string>
+  <string key="time.now">just now</string>
+  <string key="time.minutes_ago">{n} min ago</string>
+  <string key="time.hours_ago">{n} h ago</string>
+  <string key="time.yesterday">yesterday</string>
+  <string key="time.days_ago">{n} days ago</string>
+  <plural key="time.months_ago"><one>{n} month ago</one><other>{n} months ago</other></plural>
+
+  <!-- App and window -->
+  <string key="app.good_morning">Good morning</string>
+  <string key="app.good_afternoon">Good afternoon</string>
+  <string key="app.good_evening">Good evening</string>
+  <string key="app.theme_dark">◐  Dark theme</string>
+  <string key="app.theme_light">◑  Light theme</string>
+  <string key="app.toggle_theme">Toggle light/dark theme</string>
+  <string key="app.language">Language</string>
+  <string key="app.language_auto">Automatic (system)</string>
+  <string key="app.minimize">Minimize</string>
+  <string key="app.maximize">Maximize</string>
+  <string key="app.close">Close</string>
+  <string key="app.tagline">Learn · v{version}</string>
+  <string key="app.close_dialog">Close</string>
+
+  <!-- Sidebar and navigation -->
+  <string key="nav.dashboard">Dashboard</string>
+  <string key="nav.stats">Statistics</string>
+  <string key="nav.cards">Cards</string>
+  <string key="nav.subjects">Subjects</string>
+  <string key="nav.today">Today</string>
+  <string key="nav.subject_due">{name}, {n} due today</string>
+  <string key="nav.notebook">Notebook</string>
+  <string key="nav.decks">Decks</string>
+  <string key="nav.subject">Subject</string>
+  <string key="nav.new_subject">New subject</string>
+  <string key="nav.resume_review">Resume review · {n}</string>
+  <string key="nav.streak_none">Start a streak today</string>
+  <plural key="nav.streak"><one>{n}-day streak</one><other>{n}-day streak</other></plural>
+  <string key="nav.backup_ago">Automatic backup {when}</string>
+  <string key="nav.no_backup">No backup yet</string>
+  <string key="nav.open_notebook">Open notebook</string>
+  <string key="nav.study">Study</string>
+  <string key="nav.rename_subject">Rename or change color…</string>
+  <string key="nav.delete_subject">Delete subject…</string>
+  <string key="nav.expand_sidebar">Expand sidebar (Ctrl \)</string>
+
+  <!-- Common words and buttons -->
+  <string key="common.move_up">Move up</string>
+  <string key="common.move_down">Move down</string>
+  <string key="common.settings">Settings</string>
+  <string key="common.key_space">Space</string>
+  <string key="common.add_note">Add note</string>
+  <string key="common.rename">Rename…</string>
+  <string key="common.save">Save</string>
+  <string key="common.add">Add</string>
+  <string key="common.cancel">Cancel</string>
+  <string key="common.create">Create</string>
+  <string key="common.delete">Delete</string>
+  <string key="common.close">Close</string>
+
+  <!-- Dashboard -->
+  <string key="dash.subtitle">{date} · the study day rolls over at {hour}:00</string>
+  <string key="dash.search">Search or run…</string>
+  <string key="dash.open_palette">Open the command palette</string>
+  <string key="dash.today">Today</string>
+  <plural key="dash.cards_to_study"><one>card to study,</one><other>cards to study,</other></plural>
+  <string key="dash.about_minutes">about {n} min</string>
+  <string key="dash.review">review</string>
+  <string key="dash.new">new</string>
+  <string key="dash.learning">learning</string>
+  <string key="dash.study_all">Study all</string>
+  <string key="dash.custom_session">Custom session</string>
+  <string key="dash.avg_time">Average {n} s per card (30 days)</string>
+  <string key="dash.due_new">due · {n} new</string>
+  <string key="dash.plus_new">+ {n} new</string>
+  <string key="dash.no_cards">No cards yet</string>
+  <string key="dash.all_done">All caught up</string>
+  <string key="dash.tomorrow">{n} tomorrow</string>
+  <string key="dash.retention">retention {pct}</string>
+  <string key="dash.retention_none">retention —</string>
+  <plural key="dash.card_count"><one>{count} card</one><other>{count} cards</other></plural>
+  <string key="dash.welcome">Welcome</string>
+  <string key="dash.welcome_title">Discite, </string>
+  <string key="dash.welcome_title_em">learn.</string>
+  <string key="dash.welcome_text">Organize your studies by subject: write notes in the notebook and turn what matters into flashcards, reviewed at the right time by FSRS.</string>
+  <string key="dash.create_first_subject">Create your first subject</string>
+  <string key="dash.load_sample">Load sample</string>
+  <string key="dash.year_reviews">Reviews in the last year</string>
+  <string key="dash.year_summary">{reviews} reviews · {days} days studied</string>
+  <string key="dash.more">more</string>
+  <string key="dash.less">less</string>
+  <string key="dash.recent_pages">Recent pages</string>
+  <string key="dash.no_pages">No pages yet.</string>
+  <string key="dash.next_7_days">Next 7 days</string>
+  <string key="dash.avg_per_day">avg {n}/day</string>
+  <string key="dash.today_short">today</string>
+
+  <!-- Subject (decks tab) -->
+  <string key="subject.preset_info"> · preset {name} ({algorithm}, retention {pct}%)</string>
+  <plural key="subject.summary"><one>{n} deck · {cards} cards{preset}</one><other>{n} decks · {cards} cards{preset}</other></plural>
+  <string key="subject.study">Study {name}</string>
+  <string key="subject.retention_30">Retention · 30 days</string>
+  <string key="subject.above_goal">{n} points above target</string>
+  <string key="subject.below_goal">{n} points below target</string>
+  <string key="subject.desired">Target {pct}% · mature reviews (≥ 21 d)</string>
+  <string key="subject.cards_minutes">cards · about {n} min</string>
+  <string key="subject.today_breakdown">{review} review · {new} new · {learn} learning</string>
+  <string key="subject.load_7">Forecast load · 7 days</string>
+  <string key="subject.nothing_scheduled">Nothing scheduled</string>
+
+  <!-- Decks -->
+  <string key="deck.deck">Deck</string>
+  <string key="deck.new">New</string>
+  <string key="deck.learning">Learning</string>
+  <string key="deck.review">Review</string>
+  <string key="deck.none">  No decks.</string>
+  <string key="deck.add">+ Deck</string>
+  <string key="deck.import_csv">Import CSV</string>
+  <string key="deck.bury_note">Cards from the same note don't show up on the same day.</string>
+  <string key="deck.options">Deck options</string>
+  <string key="deck.custom_study">Custom study…</string>
+  <string key="deck.add_note_here">Add note here</string>
+  <string key="deck.view_cards">View cards</string>
+  <string key="deck.new_subdeck">New subdeck…</string>
+  <string key="deck.preset_options">Preset options…</string>
+  <string key="deck.use_preset">Use preset</string>
+  <string key="deck.delete">Delete deck…</string>
+
+  <!-- Notebook -->
+  <string key="page.untitled">Untitled</string>
+  <string key="page.empty_title">Empty notebook</string>
+  <string key="page.empty_text">Write notes in pages and subpages. Images can be pasted straight in (Ctrl+V).</string>
+  <string key="page.new_page">New page</string>
+  <string key="page.notebook">Notebook</string>
+  <string key="page.more_options">More notebook options</string>
+  <string key="page.import_markdown">Import Markdown…</string>
+  <string key="page.new_page_hint">New page (Ctrl N)</string>
+  <plural key="page.count"><one>{n} page</one><other>{n} pages</other></plural>
+  <string key="page.new_subpage">New subpage</string>
+  <string key="page.indent">Make subpage of the previous one</string>
+  <string key="page.outdent">Move up a level</string>
+  <string key="page.move_to_subject">Move to subject</string>
+  <string key="page.delete">Delete page…</string>
+  <string key="page.breadcrumb">{subject}  ›  Notebook  ›  </string>
+  <string key="page.export">Export</string>
+  <string key="page.history">History</string>
+  <string key="page.focus">Focus</string>
+  <string key="page.exit_focus">Exit focus</string>
+  <string key="page.editing">editing…</string>
+  <string key="page.saved">saved</string>
+  <string key="page.remove_tag">Remove tag</string>
+  <string key="page.new_tag">new-tag</string>
+  <string key="page.add_tag">+ tag</string>
+  <string key="page.edited">edited {when}</string>
+  <string key="page.bold">Bold (Ctrl B)</string>
+  <string key="page.italic">Italic (Ctrl I)</string>
+  <string key="page.underline">Underline (Ctrl U)</string>
+  <string key="page.strike">Strikethrough</string>
+  <string key="page.inline_code">Inline code (Ctrl E)</string>
+  <string key="page.highlight">Highlight (Ctrl Shift H)</string>
+  <string key="page.link">Link to page</string>
+  <string key="page.image">Image</string>
+  <string key="page.table">Table</string>
+  <string key="page.formula">∑ Formula</string>
+  <string key="page.insert">Insert</string>
+  <string key="page.more">More</string>
+  <string key="page.create_flashcard">Create flashcard</string>
+  <string key="page.code">Code</string>
+  <string key="page.formula_label">∑ Formula · LaTeX</string>
+  <string key="page.tip">Tip</string>
+  <string key="page.slash_hint">Type '/' for commands</string>
+  <string key="page.blocks">Blocks</string>
+  <string key="page.insert_below">Insert block below</string>
+  <string key="page.drag_or_menu">Drag, or open the block menu</string>
+  <string key="page.turn_into">Turn into</string>
+  <string key="page.flashcard_from_block">Create flashcard from this block</string>
+  <string key="page.duplicate">Duplicate</string>
+  <string key="page.delete_block">Delete block</string>
+  <string key="page.image_pick">Click to choose an image, paste one (Ctrl+V) or drop a file</string>
+  <string key="page.image_missing">Image not found in the media folder</string>
+  <string key="page.image_broken">Could not open this image</string>
+  <string key="page.choose_image">Choose image…</string>
+  <string key="page.remove">Remove</string>
+  <string key="page.size_s">S</string>
+  <string key="page.size_m">M</string>
+  <string key="page.size_l">L</string>
+  <string key="page.remove_image">Remove image</string>
+  <string key="page.caption">Caption</string>
+  <string key="page.add_row">+ row</string>
+  <string key="page.add_col">+ column</string>
+  <string key="page.del_row">− row</string>
+  <string key="page.del_col">− column</string>
+  <string key="page.outline">Outline</string>
+  <string key="page.backlinks">Backlinks · {n}</string>
+  <string key="page.no_backlinks">No pages link here.</string>
+  <string key="page.linked_cards">Linked cards · {n}</string>
+  <string key="page.linked_hint">Select some text and use Create flashcard.</string>
+  <string key="page.review_r">review · R {pct}</string>
+  <string key="page.due_now">now</string>
+  <string key="page.due_in">in {interval}</string>
+  <plural key="page.study_these"><one>Study this {n}</one><other>Study these {n}</other></plural>
+  <string key="page.cards_of">Cards from “{title}”</string>
+  <string key="page.md_tip">Tip:</string>
+  <string key="page.md_images_suffix">_images</string>
+  <string key="page.imported_title">Imported</string>
+
+  <!-- Block types -->
+  <string key="block.paragraph">Paragraph</string>
+  <string key="block.h1">Heading 1</string>
+  <string key="block.h2">Heading 2</string>
+  <string key="block.h3">Heading 3</string>
+  <string key="block.bullet">Bulleted list</string>
+  <string key="block.numbered">Numbered list</string>
+  <string key="block.check">Checklist</string>
+  <string key="block.quote">Quote</string>
+  <string key="block.code">Code block</string>
+  <string key="block.callout">Callout (tip)</string>
+  <string key="block.image">Image</string>
+  <string key="block.table">Table</string>
+  <string key="block.divider">Divider</string>
+  <string key="block.formula">Formula (LaTeX)</string>
+
+  <!-- Review session -->
+  <string key="review.all_subjects">All subjects</string>
+  <string key="review.leech_tag">leech</string>
+  <string key="review.exit">← Exit</string>
+  <string key="review.origin">Source</string>
+  <string key="review.info">Info</string>
+  <string key="review.edit">Edit</string>
+  <string key="review.flagged">★ flagged</string>
+  <string key="review.predicted_r">Predicted R {pct}</string>
+  <plural key="review.lapses"><one>{n} lapse</one><other>{n} lapses</other></plural>
+  <string key="review.first_time">first time</string>
+  <string key="review.nth_review">review #{n}</string>
+  <string key="review.show_answer">Show answer</string>
+  <string key="review.try_recall">Try to recall before flipping the card.</string>
+  <string key="review.rating_next">{rating}, next in {interval}</string>
+  <string key="review.hint_undo">undo</string>
+  <string key="review.hint_suspend">suspend</string>
+  <string key="review.hint_bury">bury</string>
+  <string key="review.hint_flag">flag</string>
+  <string key="review.type_answer">Type the answer and press Enter</string>
+  <string key="review.nothing_typed">(nothing typed)</string>
+  <string key="review.break">Break</string>
+  <string key="review.learning_returns">The next learning card comes back in {n} min.</string>
+  <string key="review.break_tip">Short steps lock in recent memories. Use the time to go over your notes.</string>
+  <string key="review.show_now">Show now</string>
+  <string key="review.end">End</string>
+  <string key="review.done_title">Session complete</string>
+  <string key="review.done_good">Nice work. Everything due today has been reviewed.</string>
+  <string key="review.done_empty">Nothing left to study right now.</string>
+  <string key="review.stat_cards">cards</string>
+  <string key="review.stat_correct">correct</string>
+  <string key="review.stat_studying">studying</string>
+  <string key="review.stat_tomorrow">tomorrow</string>
+  <string key="review.back">Back</string>
+  <string key="review.custom_study">Custom study</string>
+
+  <!-- Answer buttons -->
+  <string key="rating.again">Again</string>
+  <string key="rating.hard">Hard</string>
+  <string key="rating.good">Good</string>
+  <string key="rating.easy">Easy</string>
+
+  <!-- Card states -->
+  <string key="state.new">new</string>
+  <string key="state.learning">learning</string>
+  <string key="state.review">review</string>
+  <string key="state.relearning">relearning</string>
+
+  <!-- Note editor -->
+  <string key="note.need_cloze">Create at least one gap: select some text and use New gap (Ctrl+Shift+C).</string>
+  <string key="note.need_image">Choose or paste an image.</string>
+  <string key="note.need_mask">Draw at least one mask by dragging over the image.</string>
+  <string key="note.front_empty">The front is empty.</string>
+  <string key="note.edit_title">Edit note</string>
+  <string key="note.add_title">Add note</string>
+  <string key="note.source">source</string>
+  <string key="note.keep">Keep deck and tags for the next note</string>
+  <string key="note.delete">Delete note</string>
+  <string key="note.note_type">Note type</string>
+  <plural key="note.gaps"><one>{n} gap · makes {n} card</one><other>{n} gaps · makes {n} cards</other></plural>
+  <string key="note.tags">Tags</string>
+  <string key="note.remove_tag">Remove tag</string>
+  <string key="note.add_tag">add…</string>
+  <string key="note.duplicate">Duplicate?</string>
+  <string key="note.similar">Similar to “{front}” ({kind}).</string>
+  <string key="note.view_note">View note</string>
+  <string key="note.bold">Bold (Ctrl B)</string>
+  <string key="note.italic">Italic (Ctrl I)</string>
+  <string key="note.underline">Underline (Ctrl U)</string>
+  <string key="note.image">Image</string>
+  <string key="note.images_filter">Images</string>
+  <string key="note.new_gap">New gap</string>
+  <plural key="note.masks"><one>{n} mask · makes {n} card</one><other>{n} masks · makes {n} cards</other></plural>
+  <string key="note.choose_image">Choose image…</string>
+  <string key="note.change_image">Change image…</string>
+  <string key="note.paste_or_drag">or paste (Ctrl+V) / drag an image</string>
+  <string key="note.delete_mask">Delete mask</string>
+  <string key="note.no_image">[ no image ]</string>
+  <string key="note.preview">Preview</string>
+  <string key="note.card_n">Card {n}</string>
+  <string key="note.front">Front</string>
+  <string key="note.back">Back</string>
+  <string key="note.type_placeholder">type the answer…</string>
+  <string key="note.tip_cloze">One gap per card keeps each card atomic (the minimum information principle).</string>
+  <string key="note.tip_reversed">Makes two cards: front → back and back → front.</string>
+  <string key="note.tip_type_in">Typing the answer forces exact recall (handy for terms and spelling).</string>
+  <string key="note.tip_occlusion">Drag over the image to create masks: each one becomes a card.</string>
+  <string key="note.tip_basic">Short, specific questions are remembered more consistently.</string>
+
+  <!-- Note types -->
+  <string key="kind.basic">Basic</string>
+  <string key="kind.basic_reversed">Basic + reversed</string>
+  <string key="kind.cloze">Cloze</string>
+  <string key="kind.type_in">Type the answer</string>
+  <string key="kind.occlusion">Image occlusion</string>
+
+  <!-- Note fields -->
+  <string key="field.front">Front</string>
+  <string key="field.back">Back</string>
+  <string key="field.extra">Extra</string>
+  <string key="field.text">Text</string>
+  <string key="field.image">Image</string>
+  <string key="field.masks">Masks</string>
+  <string key="field.header">Header</string>
+
+  <!-- Card browser -->
+  <string key="browser.col_front">Front</string>
+  <string key="browser.col_deck">Deck</string>
+  <string key="browser.col_due">Due</string>
+  <string key="browser.col_ivl">Ivl</string>
+  <string key="browser.col_reps">Revs</string>
+  <string key="browser.col_kind">Type</string>
+  <string key="browser.col_added">Added</string>
+  <string key="browser.due_new">new</string>
+  <string key="browser.due_suspended">suspended</string>
+  <string key="browser.due_today">today</string>
+  <string key="browser.due_tomorrow">tomorrow</string>
+  <string key="browser.due_in_days">in {n} d</string>
+  <string key="browser.ivl_days">{n} d</string>
+  <string key="browser.ivl_months">{n} mo</string>
+  <string key="browser.ivl_years">{n} y</string>
+  <string key="browser.title">Cards</string>
+  <string key="browser.count">{shown} of {total} cards{selected}</string>
+  <string key="browser.selected_suffix"> · {n} selected</string>
+  <string key="browser.columns">Columns</string>
+  <string key="browser.search_hint">deck:Pharmacology is:due prop:r&lt;0.8 lapses&gt;1 tag:exam "text"</string>
+  <string key="browser.f_due">Due today</string>
+  <string key="browser.f_forgot">Forgotten today</string>
+  <string key="browser.f_new">New</string>
+  <string key="browser.f_flagged">Flagged</string>
+  <string key="browser.f_leeches">Leeches · {n}</string>
+  <string key="browser.f_suspended">Suspended</string>
+  <string key="browser.empty">No cards yet. Add notes to get started.</string>
+  <string key="browser.no_match">No cards match the search.</string>
+  <plural key="browser.study_n"><one>Study {n} card</one><other>Study {n} cards</other></plural>
+  <string key="browser.selection_scope">Browser selection</string>
+  <string key="browser.move">Move to deck…</string>
+  <string key="browser.tags">Add or remove tags…</string>
+  <string key="browser.unsuspend">Unsuspend</string>
+  <string key="browser.suspend">Suspend</string>
+  <string key="browser.unflag">Unflag</string>
+  <string key="browser.flag">Flag</string>
+  <string key="browser.reset">Reset to new</string>
+  <string key="browser.delete_notes">Delete notes…</string>
+  <string key="browser.select_hint">Select a card to see its difficulty, stability, retrievability curve and review history.</string>
+  <string key="browser.multi_hint">Ctrl+click and Shift+click select several; right-click for bulk actions.</string>
+  <string key="browser.selection">Selection</string>
+  <string key="browser.n_selected">{n} cards selected</string>
+  <string key="browser.study_selection">Study selection</string>
+  <string key="browser.bulk">Bulk actions ▾</string>
+  <string key="browser.edit">Edit</string>
+  <string key="browser.difficulty">Difficulty</string>
+  <string key="browser.stability">Stability</string>
+  <string key="browser.r_now">R now</string>
+  <string key="browser.predicted_r">Predicted retrievability</string>
+  <string key="browser.target">target {pct}</string>
+  <string key="browser.history">History</string>
+  <string key="browser.not_reviewed">Not reviewed yet.</string>
+  <string key="browser.added">Added</string>
+  <string key="browser.due">Due</string>
+  <string key="browser.reviews">Reviews</string>
+  <plural key="browser.reviews_value"><one>{reps} · {n} lapse</one><other>{reps} · {n} lapses</other></plural>
+  <string key="browser.total_time">Total time</string>
+  <string key="browser.tags_label">Tags</string>
+  <string key="browser.reset_one">Reset</string>
+  <string key="browser.view_source">View source</string>
+  <string key="browser.no_reviews">No reviews yet</string>
+  <string key="browser.today">today</string>
+
+  <!-- Search errors -->
+  <string key="search.no_deck">Deck not found: {name}</string>
+  <string key="search.no_subject">Subject not found: {name}</string>
+  <string key="search.unknown">Unknown term: {term}</string>
+  <string key="search.bad_compare">Invalid comparison in {term}</string>
+
+  <!-- Preset options -->
+  <string key="preset.default_name">Default</string>
+  <string key="preset.not_enough_reviews">There aren't enough reviews in this preset yet.</string>
+  <string key="preset.eval_failed">Could not evaluate</string>
+  <string key="preset.not_enough_data">Not enough data: keep studying (a few hundred reviews help).</string>
+  <string key="preset.optimize_failed">Optimization failed: {error}</string>
+  <string key="preset.sim_failed">The simulation failed</string>
+  <plural key="preset.shared_by"><one>Shared by {n} deck{subjects}</one><other>Shared by {n} decks{subjects}</other></plural>
+  <string key="preset.of_subjects"> from {list}</string>
+  <string key="preset.list_and">{rest} and {last}</string>
+  <string key="preset.title">Preset options</string>
+  <string key="preset.restore_defaults">Restore defaults</string>
+  <string key="preset.new">New preset…</string>
+  <string key="preset.delete">Delete preset</string>
+  <string key="preset.scheduling">Scheduling</string>
+  <string key="preset.sm2_note">SM-2 uses Anki's classic ease factor. FSRS still tracks each card's memory for the statistics.</string>
+  <string key="preset.starting_ease">Starting ease</string>
+  <string key="preset.easy_bonus">Easy bonus</string>
+  <string key="preset.hard_multiplier">Hard multiplier</string>
+  <string key="preset.desired_retention">Desired retention</string>
+  <string key="preset.at">at {value}</string>
+  <string key="preset.current"> · current</string>
+  <string key="preset.per_day">{n} rev./day</string>
+  <string key="preset.computing">computing…</string>
+  <string key="preset.steps_limits">Steps and limits</string>
+  <string key="preset.learning_steps">Learning steps</string>
+  <string key="preset.steps_format">format: 1m 10m 1h 1d</string>
+  <string key="preset.relearning_steps">Relearning</string>
+  <string key="preset.max_interval">Maximum interval</string>
+  <string key="preset.days">days</string>
+  <string key="preset.new_per_day">New cards per day</string>
+  <string key="preset.reviews_per_day">Reviews per day</string>
+  <string key="preset.leech">Leech</string>
+  <string key="preset.leech_value">{n} lapses · {action}</string>
+  <string key="preset.leech_tag">tag</string>
+  <string key="preset.leech_suspend">suspend</string>
+  <string key="preset.lapses">{n} lapses</string>
+  <string key="preset.leech_tag_long">Tag it</string>
+  <string key="preset.leech_suspend_long">Suspend</string>
+  <string key="preset.review_order">Review order</string>
+  <string key="preset.bury">Bury siblings</string>
+  <string key="preset.new_mix">New cards with reviews</string>
+  <string key="preset.fuzz">Fuzz and load balancing</string>
+  <string key="preset.new_order">New card order</string>
+  <string key="preset.optimizer">Optimizer</string>
+  <string key="preset.suggested">suggested</string>
+  <string key="preset.never_optimized">Never optimized: using the default FSRS-6 parameters.</string>
+  <string key="preset.optimized_today">Optimized today.</string>
+  <string key="preset.optimized_ago">Last optimized {n} days ago.</string>
+  <string key="preset.reviews_here">{n} reviews in this preset. {last}</string>
+  <string key="preset.current_col">Current</string>
+  <string key="preset.new_col">New</string>
+  <string key="preset.kept_defaults">Not much data yet: the optimizer kept the default parameters.</string>
+  <string key="preset.optimizing">optimizing…</string>
+  <string key="preset.evaluating">evaluating…</string>
+  <string key="preset.apply">Apply new parameters</string>
+  <string key="preset.optimize">Optimize parameters</string>
+  <string key="preset.evaluate">Evaluate</string>
+  <string key="preset.simulator">Simulator</string>
+  <string key="preset.simulate_again">Simulate again</string>
+  <string key="preset.days_365">365 days</string>
+  <string key="preset.simulating">simulating…</string>
+  <string key="preset.no_simulation">no simulation</string>
+  <string key="preset.daily_load">daily load</string>
+  <string key="preset.retained">knowledge retained</string>
+  <string key="preset.knee">Above {value}, each point of retention costs far more reviews than it adds to memory.</string>
+
+  <!-- Review and new-card order -->
+  <string key="order.retrievability">Retrievability ↑</string>
+  <string key="order.due">Due date</string>
+  <string key="order.random">Random</string>
+  <string key="order.deck">By deck</string>
+  <string key="order.created">Order added</string>
+  <string key="order.mixed">Mixed in</string>
+  <string key="order.before">Before reviews</string>
+  <string key="order.after">After reviews</string>
+
+  <!-- Statistics -->
+  <string key="stats.last_7">last 7 days</string>
+  <string key="stats.last_30">last 30 days</string>
+  <string key="stats.last_year">last year</string>
+  <string key="stats.p7">7 days</string>
+  <string key="stats.p30">30 days</string>
+  <string key="stats.p365">1 year</string>
+  <string key="stats.global">Global</string>
+  <string key="stats.time_h">{h} h {m}</string>
+  <string key="stats.reviews">Reviews</string>
+  <string key="stats.per_day">{n} per day</string>
+  <string key="stats.true_retention">True retention</string>
+  <string key="stats.target">target {pct}</string>
+  <string key="stats.time_studied">Time studied</string>
+  <string key="stats.per_card">{n} s per card</string>
+  <string key="stats.retained">Knowledge retained</string>
+  <string key="stats.this_month">{delta} this month</string>
+  <string key="stats.daily">Reviews per day</string>
+  <string key="stats.by_kind">by type</string>
+  <string key="stats.no_reviews">No reviews in this period</string>
+  <string key="stats.k_review">review</string>
+  <string key="stats.k_learning">learning</string>
+  <string key="stats.k_relearning">relearning</string>
+  <string key="stats.forecast">Forecast</string>
+  <string key="stats.next_30">next 30 days</string>
+  <string key="stats.tomorrow">tomorrow · {n}</string>
+  <string key="stats.total">total {n}</string>
+  <string key="stats.calibration">Calibration</string>
+  <string key="stats.calibration_sub">predicted × observed R</string>
+  <string key="stats.calibrated">RMSE {pct} · well calibrated</string>
+  <string key="stats.optimize_hint">RMSE {pct} · optimizing the preset may help</string>
+  <string key="stats.not_enough">Not enough reviews</string>
+  <string key="stats.card_count">Card count</string>
+  <string key="stats.c_new">New</string>
+  <string key="stats.c_learning">Learning</string>
+  <string key="stats.c_young">Young</string>
+  <string key="stats.c_mature">Mature</string>
+  <string key="stats.c_suspended">Suspended</string>
+  <string key="stats.mature_note">Mature: interval ≥ 21 days</string>
+  <string key="stats.buttons">Buttons</string>
+  <string key="stats.answer_freq">answer frequency</string>
+  <string key="stats.correct">{pct} correct</string>
+  <string key="stats.hours">Hour of day</string>
+  <string key="stats.correct_by_hour">correct by hour</string>
+  <string key="stats.distributions">Distributions</string>
+  <string key="stats.studied_cards">cards studied so far</string>
+  <string key="stats.d_dist">Difficulty (1–10)</string>
+  <string key="stats.s_dist">Stability (days, log scale)</string>
+  <string key="stats.r_dist">Retrievability now</string>
+
+  <!-- Settings -->
+  <string key="settings.subtitle">Discite {version} · data in {path}</string>
+  <string key="settings.appearance">Appearance</string>
+  <string key="settings.theme">Theme</string>
+  <string key="settings.theme_dark">Dark · graphite</string>
+  <string key="settings.theme_light">Light · paper</string>
+  <string key="settings.reading_width">Reading column width</string>
+  <string key="settings.sidebar_collapsed">Collapsed sidebar</string>
+  <string key="settings.language_hint">More languages: drop an XML file in the locales folder (see the README).</string>
+  <string key="settings.study">Study</string>
+  <string key="settings.rollover">The study day rolls over at</string>
+  <string key="settings.answer_cap">Answer timer cap per card</string>
+  <string key="settings.presets">Scheduling presets</string>
+  <string key="settings.open_presets">Open preset options</string>
+  <string key="settings.data">Data and backup</string>
+  <string key="settings.auto_backup">Automatic backup (every 6 h of use and on exit)</string>
+  <string key="settings.auto_backup_short">Automatic backup</string>
+  <string key="settings.last_backup">Last backup: {when}</string>
+  <string key="settings.never">never</string>
+  <string key="settings.backup_now">Back up now</string>
+  <string key="settings.restore">Restore a backup (applied when Discite reopens)</string>
+  <string key="settings.restore_button">Restore backup…</string>
+  <string key="settings.db_filter">Discite database</string>
+  <string key="settings.data_folder">Data folder</string>
+  <string key="settings.open_folder">Open folder</string>
+  <string key="settings.orphans">Images nothing uses anymore</string>
+  <string key="settings.clean_orphans">Clean up orphan media</string>
+  <string key="settings.integrity">Database integrity</string>
+  <string key="settings.check">Check</string>
+  <string key="settings.sample">Sample content</string>
+  <string key="settings.about">About</string>
+  <string key="settings.about_text">Scheduling uses FSRS-6 (Free Spaced Repetition Scheduler), the same model as Anki, with learning steps, fuzz and load balancing. Every answer is logged (rating, time, state before and after), and the optimizer fits the parameters to your history.</string>
+  <string key="settings.fonts">Fonts: Literata and JetBrains Mono (SIL Open Font License).</string>
+
+  <!-- Command palette -->
+  <string key="palette.study_all">Study all ({n} cards)</string>
+  <string key="palette.custom_study">Custom study…</string>
+  <string key="palette.backup_now">Back up now</string>
+  <string key="palette.go_dashboard">Go to Dashboard</string>
+  <string key="palette.go_stats">Go to Statistics</string>
+  <string key="palette.go_cards">Go to Cards</string>
+  <string key="palette.open_subject">Open {name}</string>
+  <string key="palette.subject_hint">subject</string>
+  <string key="palette.notebook_of">{name} notebook</string>
+  <string key="palette.notebook_hint">notebook</string>
+  <string key="palette.study_deck">Study {name}</string>
+  <string key="palette.due_today">{n} today</string>
+  <string key="palette.preset_options">Preset options: {name}</string>
+  <string key="palette.actions">Actions</string>
+  <string key="palette.navigate">Navigate</string>
+  <string key="palette.subjects">Subjects</string>
+  <string key="palette.decks">Decks</string>
+  <string key="palette.presets">Presets</string>
+  <string key="palette.pages">Pages</string>
+  <string key="palette.page_text">In page text</string>
+  <string key="palette.cards">Cards</string>
+  <string key="palette.search_cards">Search “{q}” in cards</string>
+  <string key="palette.hint">Search pages, decks, actions…</string>
+  <string key="palette.nothing">Nothing found</string>
+
+  <!-- Dialogs -->
+  <string key="modal.edit_subject">Edit subject</string>
+  <string key="modal.new_subject">New subject</string>
+  <string key="modal.subject_hint">Subjects group the notebook and the decks of one topic.</string>
+  <string key="modal.name">Name</string>
+  <string key="modal.subject_example">e.g. Anatomy</string>
+  <string key="modal.color">Color</string>
+  <string key="modal.color_n">Color {n}</string>
+  <string key="modal.delete_q">Delete “{name}”?</string>
+  <string key="modal.delete_subject_text">Deletes {pages} pages, the decks and {cards} cards (with their history). A backup is made first.</string>
+  <string key="modal.delete_subject">Delete subject</string>
+  <string key="modal.inside">Inside {path}</string>
+  <string key="modal.in">In {name}</string>
+  <string key="modal.rename_deck">Rename deck</string>
+  <string key="modal.new_deck">New deck</string>
+  <string key="modal.deck_name">Deck name</string>
+  <string key="modal.delete_deck_text">Deletes {subdecks} subdecks and {cards} cards, along with their review history.</string>
+  <string key="modal.delete_page_text">The page and its subpages go to the internal trash. Cards created from them stay.</string>
+  <string key="modal.delete_page">Delete page</string>
+  <plural key="modal.delete_notes_q"><one>Delete {n} note?</one><other>Delete {n} notes?</other></plural>
+  <string key="modal.delete_notes_text">Their cards and review history are deleted.</string>
+  <string key="modal.card_not_found">Card not found.</string>
+  <string key="modal.page_history">Page history</string>
+  <string key="modal.page_history_text">A version is kept every 10 minutes of editing and when you leave. Restoring replaces the current content (which also becomes a version).</string>
+  <string key="modal.no_versions">No versions yet.</string>
+  <string key="modal.datetime">%m/%d/%Y %H:%M</string>
+  <plural key="modal.blocks"><one>{title} · {n} block</one><other>{title} · {n} blocks</other></plural>
+  <string key="modal.restore">Restore</string>
+  <string key="modal.zoom_hint">{pct}% · scroll to zoom</string>
+  <string key="modal.new_preset">New preset</string>
+  <string key="modal.new_preset_text">Copies the current preset's options. Then pick which decks use each preset.</string>
+  <string key="modal.preset_example">e.g. Medicine</string>
+  <string key="modal.rename_preset">Rename preset</string>
+  <plural key="modal.move_cards"><one>Move {n} card</one><other>Move {n} cards</other></plural>
+  <string key="modal.pick_deck">Choose the destination deck.</string>
+  <string key="modal.move">Move</string>
+  <plural key="modal.add_tags"><one>Add tags to {n} note</one><other>Add tags to {n} notes</other></plural>
+  <string key="modal.add_tags_text">Separate with spaces. Prefix with - to remove (e.g. -old).</string>
+  <string key="modal.tags_example">exam-2 review</string>
+  <string key="modal.apply">Apply</string>
+
+  <!-- Custom study -->
+  <string key="custom.title">Custom study</string>
+  <string key="custom.subtitle">Builds a session outside the daily queue. Scope: {scope}.</string>
+  <string key="custom.forgotten">Forgotten in the last few days</string>
+  <string key="custom.ahead">Review ahead of time</string>
+  <string key="custom.new_added">Recently added new cards</string>
+  <string key="custom.at_risk">At-risk cards (low R)</string>
+  <string key="custom.flagged">Flagged cards</string>
+  <string key="custom.search">Custom search</string>
+  <string key="custom.next">Next</string>
+  <string key="custom.last">Last</string>
+  <string key="custom.days">days</string>
+  <string key="custom.r_below">R below</string>
+  <string key="custom.search_hint">is:due tag:exam prop:r&lt;0.8</string>
+  <string key="custom.max_cards">Maximum cards</string>
+  <string key="custom.session_label">Custom study · {kind}</string>
+
+  <!-- CSV import -->
+  <string key="csv.title">Import CSV</string>
+  <plural key="csv.lines"><one>{file} · {n} line</one><other>{file} · {n} lines</other></plural>
+  <string key="csv.header">The first line is a header</string>
+  <string key="csv.columns">Columns → fields</string>
+  <string key="csv.ignore">Ignore</string>
+  <string key="csv.tags">Tags</string>
+  <string key="csv.import">Import</string>
+
+  <!-- Images -->
+  <string key="media.unsupported">Unsupported image format</string>
+  <string key="media.invalid">Invalid image</string>
+  <string key="media.write_failed">Could not write {path}</string>
+  <string key="media.read_failed">Could not read {path}</string>
+  <string key="media.paste_invalid">Invalid pasted image</string>
+  <string key="media.unavailable">image unavailable</string>
+
+  <!-- Notifications -->
+  <string key="toast.page_not_found">Page not found</string>
+  <string key="toast.create_subject_first_notes">Create a subject before adding notes</string>
+  <string key="toast.backup_failed">Backup failed: {error}</string>
+  <string key="toast.create_subject_first">Create a subject first</string>
+  <string key="toast.sample_loaded">Sample loaded: four subjects with pages and cards</string>
+  <string key="toast.nothing_to_study">Nothing to study right now. All caught up!</string>
+  <string key="toast.leech">This card became a leech: consider rewriting it or splitting it into smaller parts.</string>
+  <string key="toast.nothing_to_undo">Nothing to undo</string>
+  <string key="toast.answer_undone">Answer undone</string>
+  <plural key="toast.session_ended"><one>Session ended: {n} card, {pct} correct</one><other>Session ended: {n} cards, {pct} correct</other></plural>
+  <string key="toast.card_suspended">Card suspended</string>
+  <string key="toast.card_buried">Card buried until tomorrow</string>
+  <string key="toast.card_flagged">Card flagged</string>
+  <string key="toast.card_unflagged">Flag removed</string>
+  <string key="toast.note_saved">Note saved</string>
+  <plural key="toast.note_added"><one>Note added · {n} card</one><other>Note added · {n} cards</other></plural>
+  <string key="toast.create_deck_first">Create a deck in this subject first</string>
+  <string key="toast.page_created">Page “{title}” created</string>
+  <string key="toast.exported">Exported to {path}</string>
+  <string key="toast.markdown_imported">Markdown imported</string>
+  <string key="toast.cards_reset">Cards reset (their history stays in the log)</string>
+  <string key="toast.bad_steps">Invalid steps: use something like “1m 10m 1h 1d”</string>
+  <string key="toast.preset_saved">Preset saved</string>
+  <string key="toast.params_applied">Parameters applied · memory of {n} cards recomputed</string>
+  <string key="toast.version_restored">Version restored</string>
+  <string key="toast.no_cards_match">No cards match these criteria</string>
+  <string key="toast.empty_file">Empty file</string>
+  <string key="toast.csv_imported">{notes} notes imported · {cards} cards</string>
+  <string key="toast.backup_done">Backup done</string>
+  <string key="toast.restore_pending">Close and reopen Discite to finish restoring (the current database goes to backups).</string>
+  <plural key="toast.files_removed"><one>{n} file removed</one><other>{n} files removed</other></plural>
+  <string key="toast.db_ok">Database is healthy</string>
+  <string key="toast.db_problem">Database problem: {detail}</string>
+  <string key="toast.sample_short">Sample loaded</string>
+
+  <!-- Errors -->
+  <string key="error.create_folder">Could not create {path}</string>
+  <string key="error.restore">Could not restore the backup</string>
+  <string key="error.open_db">Could not open discite.db</string>
+  <string key="error.window">Could not open the window: {error}</string>
+
+</language>

@@ -3,6 +3,7 @@
 //! JetBrains Mono para teclas e código.
 
 use eframe::egui::{self, Align2, Color32, FontData, FontDefinitions, FontFamily, FontId, Painter, Pos2, Rect, Stroke, text::LayoutJob};
+use crate::{tr, tr_n};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -322,66 +323,70 @@ pub fn text_width(painter: &Painter, s: &str, font: FontId) -> f32 {
 }
 
 /// Inteiro com separador de milhar ("1.946").
+/// Inteiro com o separador de milhar do idioma ("1,946" / "1.946").
 pub fn thousands(n: i64) -> String {
-    let s = n.abs().to_string();
-    let mut out = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i) % 3 == 0 {
-            out.push('.');
-        }
-        out.push(c);
-    }
-    if n < 0 { format!("-{out}") } else { out }
+    crate::i18n::thousands(n)
 }
 
 pub fn pct(v: f32, places: usize) -> String {
     format!("{}%", crate::srs::decimal(v as f64 * 100.0, places))
 }
 
-/// "há 2 h", "ontem", "há 3 dias".
+/// "2 h ago", "yesterday", "3 days ago".
 pub fn ago(ms: i64) -> String {
     let now = crate::srs::now_ms();
     let mins = (now - ms).max(0) / 60_000;
     if mins < 1 {
-        return "agora".into();
+        return tr!("time.now");
     }
     if mins < 60 {
-        return format!("há {mins} min");
+        return tr!("time.minutes_ago", n = mins);
     }
     let hours = mins / 60;
     if hours < 24 {
-        return format!("há {hours} h");
+        return tr!("time.hours_ago", n = hours);
     }
     let days = hours / 24;
     match days {
-        1 => "ontem".into(),
-        2..=29 => format!("{days} dias"),
-        _ => format!("há {} meses", days / 30),
+        1 => tr!("time.yesterday"),
+        2..=29 => tr!("time.days_ago", n = days),
+        _ => tr_n!("time.months_ago", days / 30),
     }
 }
 
-/// "Sábado, 24 de outubro".
+/// "Saturday, October 24" / "Sábado, 24 de outubro".
 pub fn long_date() -> String {
     use chrono::Datelike;
     let t = chrono::Local::now();
-    const WD: [&str; 7] = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
-    format!("{}, {} de {}", WD[t.weekday().num_days_from_monday() as usize], t.day(), MONTHS[t.month0() as usize])
+    tr!(
+        "date.long",
+        weekday = tr!(WEEKDAYS[t.weekday().num_days_from_monday() as usize]),
+        day = t.day(),
+        month = tr!(MONTHS[t.month0() as usize])
+    )
 }
 
-pub const MONTHS: [&str; 12] = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-pub const MONTHS_SHORT: [&str; 12] = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
-pub const WEEKDAYS_SHORT: [&str; 7] = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+/// Chaves de tradução (o texto sai com `tr!`).
+pub const MONTHS: [&str; 12] = ["month.jan", "month.feb", "month.mar", "month.apr", "month.may", "month.jun", "month.jul", "month.aug", "month.sep", "month.oct", "month.nov", "month.dec"];
+pub const MONTHS_SHORT: [&str; 12] = ["month_short.jan", "month_short.feb", "month_short.mar", "month_short.apr", "month_short.may", "month_short.jun", "month_short.jul", "month_short.aug", "month_short.sep", "month_short.oct", "month_short.nov", "month_short.dec"];
+pub const WEEKDAYS: [&str; 7] = ["weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat", "weekday.sun"];
+pub const WEEKDAYS_SHORT: [&str; 7] = ["weekday_short.mon", "weekday_short.tue", "weekday_short.wed", "weekday_short.thu", "weekday_short.fri", "weekday_short.sat", "weekday_short.sun"];
 
+/// "Oct 24" / "24 out".
 pub fn short_date(ms: i64) -> String {
     use chrono::{Datelike, TimeZone};
-    chrono::Local.timestamp_millis_opt(ms).single().map(|t| format!("{:02} {}", t.day(), MONTHS_SHORT[t.month0() as usize])).unwrap_or_default()
+    chrono::Local
+        .timestamp_millis_opt(ms)
+        .single()
+        .map(|t| tr!("date.short", day = t.day(), month = tr!(MONTHS_SHORT[t.month0() as usize])))
+        .unwrap_or_default()
 }
 
-pub fn greeting() -> &'static str {
+pub fn greeting() -> String {
     use chrono::Timelike;
-    match chrono::Local::now().hour() {
-        5..=11 => "Bom dia",
-        12..=17 => "Boa tarde",
-        _ => "Boa noite",
-    }
+    tr!(match chrono::Local::now().hour() {
+        5..=11 => "app.good_morning",
+        12..=17 => "app.good_afternoon",
+        _ => "app.good_evening",
+    })
 }

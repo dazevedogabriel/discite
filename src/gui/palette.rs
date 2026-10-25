@@ -4,6 +4,7 @@
 use super::theme::*;
 use super::widgets::*;
 use super::{App, Screen, Tab, review};
+use crate::tr;
 use eframe::egui::{self, Align2, Color32, CornerRadius, Key, Modifiers, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 
 #[derive(Default)]
@@ -71,28 +72,28 @@ fn items(app: &App, q: &str) -> Vec<Item> {
         }
     };
     let c = app.total_counts();
-    push(format!("Estudar tudo ({} cartões)", c.new + c.learn + c.review), "Espaço", "Ações", None, Cmd::StudyAll);
-    push("Adicionar nota".into(), "Ctrl ⇧ A", "Ações", None, Cmd::AddNote);
-    push("Nova página".into(), "Ctrl N", "Ações", None, Cmd::NewPage);
-    push("Nova disciplina".into(), "", "Ações", None, Cmd::NewSubject);
-    push("Estudo personalizado…".into(), "", "Ações", None, Cmd::CustomStudy);
-    push("Alternar tema claro/escuro".into(), "", "Ações", None, Cmd::ToggleTheme);
-    push("Fazer backup agora".into(), "", "Ações", None, Cmd::Backup);
-    push("Ir para o Painel".into(), "01", "Navegar", None, Cmd::Go(Screen::Dashboard));
-    push("Ir para Estatísticas".into(), "02", "Navegar", None, Cmd::Go(Screen::Stats));
-    push("Ir para Cartões".into(), "03", "Navegar", None, Cmd::Go(Screen::Browser));
-    push("Configurações".into(), "", "Navegar", None, Cmd::Go(Screen::Settings));
+    push(tr!("palette.study_all", n = c.new + c.learn + c.review), &tr!("common.key_space"), "palette.actions", None, Cmd::StudyAll);
+    push(tr!("common.add_note"), "Ctrl ⇧ A", "palette.actions", None, Cmd::AddNote);
+    push(tr!("page.new_page"), "Ctrl N", "palette.actions", None, Cmd::NewPage);
+    push(tr!("nav.new_subject"), "", "palette.actions", None, Cmd::NewSubject);
+    push(tr!("palette.custom_study"), "", "palette.actions", None, Cmd::CustomStudy);
+    push(tr!("app.toggle_theme"), "", "palette.actions", None, Cmd::ToggleTheme);
+    push(tr!("palette.backup_now"), "", "palette.actions", None, Cmd::Backup);
+    push(tr!("palette.go_dashboard"), "01", "palette.navigate", None, Cmd::Go(Screen::Dashboard));
+    push(tr!("palette.go_stats"), "02", "palette.navigate", None, Cmd::Go(Screen::Stats));
+    push(tr!("palette.go_cards"), "03", "palette.navigate", None, Cmd::Go(Screen::Browser));
+    push(tr!("common.settings"), "", "palette.navigate", None, Cmd::Go(Screen::Settings));
     for s in &app.subjects {
         let col = Some(subject_color(s.color));
-        push(format!("Abrir {}", s.name), "disciplina", "Disciplinas", col, Cmd::OpenSubject(s.id));
-        push(format!("Caderno de {}", s.name), "caderno", "Disciplinas", col, Cmd::Notebook(s.id));
+        push(tr!("palette.open_subject", name = s.name), &tr!("palette.subject_hint"), "palette.subjects", col, Cmd::OpenSubject(s.id));
+        push(tr!("palette.notebook_of", name = s.name), &tr!("palette.notebook_hint"), "palette.subjects", col, Cmd::Notebook(s.id));
     }
     for d in &app.decks {
         let k = app.deck_counts(d.id);
-        push(format!("Estudar {}", app.deck_path(d.id)), &format!("{} hoje", k.new + k.learn + k.review), "Baralhos", Some(app.subject_color_of_deck(d.id)), Cmd::Study(d.id));
+        push(tr!("palette.study_deck", name = app.deck_path(d.id)), &tr!("palette.due_today", n = k.new + k.learn + k.review), "palette.decks", Some(app.subject_color_of_deck(d.id)), Cmd::Study(d.id));
     }
     for pr in &app.presets {
-        push(format!("Opções do preset {}", pr.name), "preset", "Presets", None, Cmd::Preset(pr.id));
+        push(tr!("palette.preset_options", name = pr.name), "preset", "palette.presets", None, Cmd::Preset(pr.id));
     }
     out
 }
@@ -103,7 +104,7 @@ fn run(app: &mut App, cmd: Cmd) {
         Cmd::AddNote => app.add_note(),
         Cmd::NewPage => match app.current_subject() {
             Some(s) => app.new_page(s, None),
-            None => app.toast("Crie uma disciplina primeiro"),
+            None => app.toast(tr!("toast.create_subject_first")),
         },
         Cmd::NewSubject => app.modal = Some(super::modals::Modal::Subject { id: None, name: String::new(), color: app.subjects.len() % 8 }),
         Cmd::Go(s) => app.go(s),
@@ -121,7 +122,7 @@ fn run(app: &mut App, cmd: Cmd) {
         }
         Cmd::Backup => {
             app.maybe_backup(true);
-            app.toast("Backup feito");
+            app.toast(tr!("toast.backup_done"));
         }
         Cmd::CustomStudy => app.modal = Some(super::modals::Modal::custom_study(None)),
         Cmd::Browser(q) => {
@@ -143,7 +144,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     for pg in pages.iter().filter(|pg| matches(&pg.title, &q)).take(if q.is_empty() { 6 } else { 12 }) {
         seen.insert(pg.id);
         let s = app.subject(pg.subject_id);
-        list.push(Item { label: pg.title.clone(), hint: s.map(|s| s.name.clone()).unwrap_or_default(), group: "Páginas", dot: s.map(|s| subject_color(s.color)), cmd: Cmd::Page(pg.id) });
+        list.push(Item { label: pg.title.clone(), hint: s.map(|s| s.name.clone()).unwrap_or_default(), group: "palette.pages", dot: s.map(|s| subject_color(s.color)), cmd: Cmd::Page(pg.id) });
     }
     if q.chars().count() >= 3 {
         for (pid, _, snippet) in app.db.search_pages(&q, 12).unwrap_or_default() {
@@ -151,9 +152,9 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 continue;
             }
             let Some(pg) = pages.iter().find(|x| x.id == pid) else { continue };
-            list.push(Item { label: pg.title.clone(), hint: snippet.replace('\n', " "), group: "No texto das páginas", dot: app.subject(pg.subject_id).map(|s| subject_color(s.color)), cmd: Cmd::Page(pid) });
+            list.push(Item { label: pg.title.clone(), hint: snippet.replace('\n', " "), group: "palette.page_text", dot: app.subject(pg.subject_id).map(|s| subject_color(s.color)), cmd: Cmd::Page(pid) });
         }
-        list.push(Item { label: format!("Buscar “{q}” nos cartões"), hint: "Cartões".into(), group: "Cartões", dot: None, cmd: Cmd::Browser(q.clone()) });
+        list.push(Item { label: tr!("palette.search_cards", q = q), hint: tr!("palette.cards"), group: "palette.cards", dot: None, cmd: Cmd::Browser(q.clone()) });
     }
     if pal_state.sel >= list.len() {
         pal_state.sel = list.len().saturating_sub(1);
@@ -182,7 +183,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             let (r, _) = ui.allocate_exact_size(vec2(w, 54.0), Sense::hover());
             text(ui.painter(), pos2(r.left() + 20.0, r.center().y), Align2::LEFT_CENTER, "⌕", serif(17.0, W::Regular), p.muted, 20.0);
             let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(pos2(r.left() + 44.0, r.top()), pos2(r.right() - 70.0, r.bottom()))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            let resp = cu.add(egui::TextEdit::singleline(&mut pal_state.query).frame(egui::Frame::NONE).font(serif(16.0, W::Regular)).hint_text(egui::RichText::new("Buscar páginas, baralhos, ações…").italics().color(p.dim)).desired_width(w - 120.0));
+            let resp = cu.add(egui::TextEdit::singleline(&mut pal_state.query).frame(egui::Frame::NONE).font(serif(16.0, W::Regular)).hint_text(egui::RichText::new(tr!("palette.hint")).italics().color(p.dim)).desired_width(w - 120.0));
             if !pal_state.focused {
                 resp.request_focus();
                 pal_state.focused = true;
@@ -200,7 +201,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     if it.group != last_group {
                         last_group = it.group;
                         let (gr, _) = ui.allocate_exact_size(vec2(w, 26.0), Sense::hover());
-                        caps(ui.painter(), pos2(gr.left() + 20.0, gr.center().y + 3.0), Align2::LEFT_CENTER, it.group, p.dim);
+                        caps(ui.painter(), pos2(gr.left() + 20.0, gr.center().y + 3.0), Align2::LEFT_CENTER, &tr!(it.group), p.dim);
                     }
                     let (rr, resp) = ui.allocate_exact_size(vec2(w, 36.0), Sense::click());
                     let row = rr.shrink2(vec2(8.0, 1.0));
@@ -227,7 +228,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 }
                 if list.is_empty() {
                     let (r, _) = ui.allocate_exact_size(vec2(w, 60.0), Sense::hover());
-                    text(ui.painter(), r.center(), Align2::CENTER_CENTER, "Nada encontrado", serif(13.0, W::Italic), p.muted, w);
+                    text(ui.painter(), r.center(), Align2::CENTER_CENTER, &tr!("palette.nothing"), serif(13.0, W::Italic), p.muted, w);
                 }
                 ui.add_space(6.0);
             });

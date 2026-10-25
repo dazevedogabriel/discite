@@ -6,6 +6,7 @@ use super::richtext::{self, Look};
 use super::theme::*;
 use super::widgets::*;
 use super::{App, Screen};
+use crate::{tr, tr_n};
 use crate::cards::{self, Mask, NoteKind};
 use crate::db::Note;
 use crate::rich;
@@ -119,11 +120,11 @@ fn save(app: &mut App, ed: &mut NoteEditor) -> anyhow::Result<bool> {
     let n = &mut ed.note;
     let ords = cards::card_ords(n.kind, &n.fields);
     match n.kind {
-        NoteKind::Cloze if ords.is_empty() => anyhow::bail!("Crie ao menos uma lacuna: selecione um trecho e use Nova lacuna (Ctrl+Shift+C)."),
-        NoteKind::Occlusion if n.fields[0].is_empty() => anyhow::bail!("Escolha ou cole uma imagem."),
-        NoteKind::Occlusion if ords.is_empty() => anyhow::bail!("Desenhe ao menos uma máscara arrastando sobre a imagem."),
+        NoteKind::Cloze if ords.is_empty() => anyhow::bail!(tr!("note.need_cloze")),
+        NoteKind::Occlusion if n.fields[0].is_empty() => anyhow::bail!(tr!("note.need_image")),
+        NoteKind::Occlusion if ords.is_empty() => anyhow::bail!(tr!("note.need_mask")),
         NoteKind::Basic | NoteKind::BasicReversed | NoteKind::TypeIn if rich::plain(&n.fields[0]).trim().is_empty() && !n.fields[0].contains("![](") => {
-            anyhow::bail!("A frente está vazia.")
+            anyhow::bail!(tr!("note.front_empty"))
         }
         _ => {}
     }
@@ -135,14 +136,14 @@ fn save(app: &mut App, ed: &mut NoteEditor) -> anyhow::Result<bool> {
         if cards.iter().any(|c| c.deck_id != ed.deck) {
             app.db.move_cards(&cards.iter().map(|c| c.id).collect::<Vec<_>>(), ed.deck)?;
         }
-        app.toast("Nota salva");
+        app.toast(tr!("toast.note_saved"));
         app.changed();
         return Ok(true);
     }
     let made = app.db.add_note(n, ed.deck)?;
     app.cfg.last_deck = Some(ed.deck);
     app.save_settings();
-    app.toast(format!("Nota adicionada · {made} {}", if made == 1 { "cartão" } else { "cartões" }));
+    app.toast(tr_n!("toast.note_added", made));
     app.changed();
     if ed.keep {
         let kind = n.kind;
@@ -166,13 +167,13 @@ fn body(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui, rect: Rect, close: &mut
     // ── Cabeçalho ──
     let head = Rect::from_min_size(rect.min, vec2(rect.width(), 64.0));
     ui.painter().hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, p.line));
-    let t = text(ui.painter(), pos2(head.left() + 26.0, head.center().y), Align2::LEFT_CENTER, if ed.existing { "Editar nota" } else { "Adicionar nota" }, serif(19.0, W::Semi), p.text, 300.0);
+    let t = text(ui.painter(), pos2(head.left() + 26.0, head.center().y), Align2::LEFT_CENTER, &tr!(if ed.existing { "note.edit_title" } else { "note.add_title" }), serif(19.0, W::Semi), p.text, 300.0);
     if let Some(title) = &ed.origin_title {
-        let label = format!("origem  {title}");
+        let label = format!("{}  {title}", tr!("note.source"));
         let w = text_width(ui.painter(), &label, serif(12.0, W::Regular)) + 20.0;
         let cr = Rect::from_min_size(pos2(t.right() + 14.0, head.center().y - 12.0), vec2(w.min(380.0), 24.0));
         ui.painter().rect(cr, CornerRadius::same(255), p.chip, Stroke::new(1.0, p.border), StrokeKind::Inside);
-        let g = text(ui.painter(), pos2(cr.left() + 10.0, cr.center().y), Align2::LEFT_CENTER, "origem", serif(12.0, W::Regular), p.muted, 60.0);
+        let g = text(ui.painter(), pos2(cr.left() + 10.0, cr.center().y), Align2::LEFT_CENTER, &tr!("note.source"), serif(12.0, W::Regular), p.muted, 60.0);
         text(ui.painter(), pos2(g.right() + 6.0, cr.center().y), Align2::LEFT_CENTER, title, serif(12.0, W::Regular), p.text2, cr.right() - g.right() - 14.0);
     }
     let close_r = Rect::from_center_size(pos2(head.right() - 36.0, head.center().y), vec2(40.0, 28.0));
@@ -181,7 +182,7 @@ fn body(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui, rect: Rect, close: &mut
         ui.painter().rect_filled(close_r, CornerRadius::same(6), p.hover);
     }
     text(ui.painter(), close_r.center(), Align2::CENTER_CENTER, "✕", serif(13.0, W::Regular), if cresp.hovered() { p.text } else { p.muted }, 30.0);
-    a11y(&cresp, egui::accesskit::Role::Button, "Fechar", None);
+    a11y(&cresp, egui::accesskit::Role::Button, &tr!("app.close_dialog"), None);
     if cresp.clicked() {
         *close = true;
     }
@@ -191,17 +192,17 @@ fn body(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui, rect: Rect, close: &mut
     ui.painter().hline(foot.x_range(), foot.top(), Stroke::new(1.0, p.line));
     let mut fu = ui.new_child(egui::UiBuilder::new().max_rect(foot.shrink2(vec2(24.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
     if !ed.existing {
-        checkbox(&mut fu, &mut ed.keep, "Manter baralho e tags na próxima nota");
+        checkbox(&mut fu, &mut ed.keep, &tr!("note.keep"));
     }
     fu.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
-        if button_kbd(ui, if ed.existing { "Salvar" } else { "Adicionar" }, Some("Ctrl ↵"), Btn::Primary, 36.0).clicked() {
+        if button_kbd(ui, &tr!(if ed.existing { "common.save" } else { "common.add" }), Some("Ctrl ↵"), Btn::Primary, 36.0).clicked() {
             *submit = true;
         }
-        if button(ui, "Cancelar", Btn::Secondary, 36.0).clicked() {
+        if button(ui, &tr!("common.cancel"), Btn::Secondary, 36.0).clicked() {
             *close = true;
         }
-        if ed.existing && button(ui, "Excluir nota", Btn::Danger, 36.0).clicked() {
+        if ed.existing && button(ui, &tr!("note.delete"), Btn::Danger, 36.0).clicked() {
             app.modal = Some(super::modals::Modal::DeleteNotes(vec![ed.note.id]));
             *close = true;
         }
@@ -232,11 +233,11 @@ fn left_column(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui) {
         ui.spacing_mut().item_spacing.x = 12.0;
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 6.0;
-            caps_label_w(ui, "Tipo de nota", 180.0);
+            caps_label_w(ui, &tr!("note.note_type"), 180.0);
             let cur = ed.note.kind;
-            select_field(ui, "kind", cur.label(), None, 180.0, 36.0, |ui| {
+            select_field(ui, "kind", &cur.label(), None, 180.0, 36.0, |ui| {
                 for k in NoteKind::ALL {
-                    if menu_item(ui, k.label(), k == cur).clicked() && k != cur {
+                    if menu_item(ui, &k.label(), k == cur).clicked() && k != cur {
                         if ed.existing && cards::card_ords(k, &NoteKind::convert_fields(cur, k, &ed.note.fields)).len() < cards::card_ords(cur, &ed.note.fields).len() {
                             // Trocar de tipo pode apagar cartões (e o histórico deles).
                         }
@@ -250,7 +251,7 @@ fn left_column(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui) {
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 6.0;
             let dw = ui.available_width();
-            caps_label_w(ui, "Baralho", dw);
+            caps_label_w(ui, &tr!("deck.deck"), dw);
             let path = app.deck_path(ed.deck);
             let color = app.subject_color_of_deck(ed.deck);
             let decks = app.decks.clone();
@@ -281,12 +282,12 @@ fn left_column(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui) {
             ui.spacing_mut().item_spacing.y = 6.0;
             let hint = if kind == NoteKind::Cloze && i == 0 {
                 let n = cards::cloze_numbers(&ed.note.fields[0]).len();
-                Some(format!("{n} {} · gera {n} {}", if n == 1 { "lacuna" } else { "lacunas" }, if n == 1 { "cartão" } else { "cartões" }))
+                Some(tr_n!("note.gaps", n))
             } else {
                 None
             };
             let (r, _) = ui.allocate_exact_size(vec2(w, 14.0), Sense::hover());
-            caps(ui.painter(), r.left_center(), Align2::LEFT_CENTER, names[i], p.dim);
+            caps(ui.painter(), r.left_center(), Align2::LEFT_CENTER, &tr!(names[i]), p.dim);
             if let Some(h) = hint {
                 text(ui.painter(), r.right_center(), Align2::RIGHT_CENTER, &h, serif(11.5, W::Regular), p.muted, 240.0);
             }
@@ -297,14 +298,14 @@ fn left_column(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui) {
     // Tags.
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 6.0;
-        caps_label_w(ui, "Tags", w);
+        caps_label_w(ui, &tr!("note.tags"), w);
         let (r, _) = ui.allocate_exact_size(vec2(w, 36.0), Sense::hover());
         ui.painter().rect(r, CornerRadius::same(8), p.input, Stroke::new(1.0, p.border_control), StrokeKind::Inside);
         let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(r.shrink2(vec2(10.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
         cu.spacing_mut().item_spacing.x = 6.0;
         let tags = ed.note.tag_list();
         for t in &tags {
-            if chip(&mut cu, &format!("{t} ✕"), false, 22.0).on_hover_text("Remover tag").clicked() {
+            if chip(&mut cu, &format!("{t} ✕"), false, 22.0).on_hover_text(tr!("note.remove_tag")).clicked() {
                 ed.note.tags = tags.iter().filter(|x| *x != t).cloned().collect::<Vec<_>>().join(" ");
             }
         }
@@ -312,7 +313,7 @@ fn left_column(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui) {
             egui::TextEdit::singleline(&mut ed.tag_input)
                 .frame(egui::Frame::NONE)
                 .font(serif(13.0, W::Regular))
-                .hint_text(egui::RichText::new("adicionar…").italics().color(p.dim))
+                .hint_text(egui::RichText::new(tr!("note.add_tag")).italics().color(p.dim))
                 .desired_width(cu.available_width()),
         );
         if ed.tag_input.ends_with(' ') || ed.tag_input.ends_with(',') || (resp.lost_focus() && !ed.tag_input.trim().is_empty()) {
@@ -335,10 +336,10 @@ fn left_column(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui) {
             ui.set_width(w - 28.0);
             ui.horizontal_top(|ui| {
                 let (r, _) = ui.allocate_exact_size(vec2(84.0, 18.0), Sense::hover());
-                caps(ui.painter(), r.left_center(), Align2::LEFT_CENTER, "Duplicata?", p.hard);
+                caps(ui.painter(), r.left_center(), Align2::LEFT_CENTER, &tr!("note.duplicate"), p.hard);
                 ui.vertical(|ui| {
-                    para(ui, &format!("Parecida com “{front}” ({kind_label})."), serif(13.0, W::Regular), p.text2);
-                    if ui.link(egui::RichText::new("Ver nota").color(p.accent).size(13.0)).clicked() {
+                    para(ui, &tr!("note.similar", front = front, kind = kind_label), serif(13.0, W::Regular), p.text2);
+                    if ui.link(egui::RichText::new(tr!("note.view_note")).color(p.accent).size(13.0)).clicked() {
                         app.browser.query = format!("nid:{id}");
                         app.browser.select_note = Some(id);
                         app.browser.dirty = true;
@@ -386,14 +387,15 @@ fn field_box(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui, i: usize, w: f32) 
         egui::Frame::NONE.inner_margin(egui::Margin::symmetric(6, 5)).show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.set_width(w - 12.0);
-                for (g, m, label) in [("B", "**", "Negrito (Ctrl B)"), ("I", "*", "Itálico (Ctrl I)"), ("U", "__", "Sublinhado (Ctrl U)")] {
+                for (g, m, key) in [("B", "**", "note.bold"), ("I", "*", "note.italic"), ("U", "__", "note.underline")] {
+                    let label = &tr!(key);
                     let r = fmt_button(ui, g, label);
                     if r.clicked() {
                         wrap_sel(ed, i, m);
                     }
                 }
-                if button(ui, "Imagem", Btn::Ghost, 26.0).clicked() {
-                    if let Some(path) = rfd::FileDialog::new().add_filter("Imagens", &["png", "jpg", "jpeg", "webp", "gif", "bmp"]).pick_file() {
+                if button(ui, &tr!("note.image"), Btn::Ghost, 26.0).clicked() {
+                    if let Some(path) = rfd::FileDialog::new().add_filter(tr!("note.images_filter"), &["png", "jpg", "jpeg", "webp", "gif", "bmp"]).pick_file() {
                         match crate::media::store_file(&app.db.media_dir(), &path) {
                             Ok(s) => {
                                 let _ = app.db.add_media(&s);
@@ -405,7 +407,7 @@ fn field_box(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui, i: usize, w: f32) 
                 }
                 if cloze {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if button_kbd(ui, "Nova lacuna", Some("Ctrl ⇧ C"), Btn::Secondary, 26.0).clicked() {
+                        if button_kbd(ui, &tr!("note.new_gap"), Some("Ctrl ⇧ C"), Btn::Secondary, 26.0).clicked() {
                             new_cloze(ed);
                         }
                     });
@@ -539,11 +541,11 @@ fn occlusion_editor(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui) {
         ui.spacing_mut().item_spacing.y = 8.0;
         let masks = cards::parse_masks(&ed.note.fields[1]);
         let (r, _) = ui.allocate_exact_size(vec2(w, 14.0), Sense::hover());
-        caps(ui.painter(), r.left_center(), Align2::LEFT_CENTER, "Imagem", p.dim);
-        text(ui.painter(), r.right_center(), Align2::RIGHT_CENTER, &format!("{} máscaras · gera {} cartões", masks.len(), masks.len()), serif(11.5, W::Regular), p.muted, 260.0);
+        caps(ui.painter(), r.left_center(), Align2::LEFT_CENTER, &tr!("note.image"), p.dim);
+        text(ui.painter(), r.right_center(), Align2::RIGHT_CENTER, &tr_n!("note.masks", masks.len()), serif(11.5, W::Regular), p.muted, 260.0);
         ui.horizontal(|ui| {
-            if button(ui, if ed.note.fields[0].is_empty() { "Escolher imagem…" } else { "Trocar imagem…" }, Btn::Secondary, 30.0).clicked() {
-                if let Some(path) = rfd::FileDialog::new().add_filter("Imagens", &["png", "jpg", "jpeg", "webp", "gif", "bmp"]).pick_file() {
+            if button(ui, &tr!(if ed.note.fields[0].is_empty() { "note.choose_image" } else { "note.change_image" }), Btn::Secondary, 30.0).clicked() {
+                if let Some(path) = rfd::FileDialog::new().add_filter(tr!("note.images_filter"), &["png", "jpg", "jpeg", "webp", "gif", "bmp"]).pick_file() {
                     match crate::media::store_file(&app.db.media_dir(), &path) {
                         Ok(s) => {
                             let _ = app.db.add_media(&s);
@@ -553,8 +555,8 @@ fn occlusion_editor(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui) {
                     }
                 }
             }
-            label(ui, "ou cole (Ctrl+V) / arraste uma imagem", serif(12.5, W::Italic), p.muted);
-            if ed.mask_sel.is_some() && button(ui, "Apagar máscara", Btn::Danger, 30.0).clicked() {
+            label(ui, &tr!("note.paste_or_drag"), serif(12.5, W::Italic), p.muted);
+            if ed.mask_sel.is_some() && button(ui, &tr!("note.delete_mask"), Btn::Danger, 30.0).clicked() {
                 remove_mask(ed);
             }
         });
@@ -572,7 +574,7 @@ fn occlusion_editor(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui) {
         if ed.note.fields[0].is_empty() {
             let (r, _) = ui.allocate_exact_size(vec2(w, 160.0), Sense::hover());
             ui.painter().rect(r, CornerRadius::same(10), p.card, Stroke::new(1.0, p.border_strong), StrokeKind::Inside);
-            text(ui.painter(), r.center(), Align2::CENTER_CENTER, "[ nenhuma imagem ]", serif(13.0, W::Italic), p.muted, w);
+            text(ui.painter(), r.center(), Align2::CENTER_CENTER, &tr!("note.no_image"), serif(13.0, W::Italic), p.muted, w);
             return;
         }
         let resp = richtext::image(ui, &crate::media::uri(&app.db.media_dir(), &ed.note.fields[0]), w, 340.0, 0, Sense::click_and_drag());
@@ -640,14 +642,14 @@ fn preview(app: &App, ed: &mut NoteEditor, ui: &mut Ui) {
     ui.spacing_mut().item_spacing.y = 12.0;
     let ords = cards::card_ords(ed.note.kind, &ed.note.fields);
     let (r, _) = ui.allocate_exact_size(vec2(w, 30.0), Sense::hover());
-    caps(ui.painter(), r.left_center(), Align2::LEFT_CENTER, "Pré-visualização", p.dim);
+    caps(ui.painter(), r.left_center(), Align2::LEFT_CENTER, &tr!("note.preview"), p.dim);
     if ords.len() > 1 {
         let labels: Vec<String> = ords
             .iter()
             .map(|o| match ed.note.kind {
                 NoteKind::Cloze => format!("c{}", o + 1),
                 NoteKind::Occlusion => format!("{}", o + 1),
-                _ => format!("Cartão {}", o + 1),
+                _ => tr!("note.card_n", n = o + 1),
             })
             .take(8)
             .collect();
@@ -664,7 +666,7 @@ fn preview(app: &App, ed: &mut NoteEditor, ui: &mut Ui) {
     let media = app.db.media_dir();
     egui::ScrollArea::vertical().id_salt("ne_prev").auto_shrink([false, false]).max_height(ui.available_height() - 50.0).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 12.0;
-        label(ui, "Frente", serif(12.0, W::Regular), p.muted);
+        label(ui, &tr!("note.front"), serif(12.0, W::Regular), p.muted);
         let box_frame = egui::Frame::NONE.fill(p.window).stroke(Stroke::new(1.0, p.border)).corner_radius(12).inner_margin(20);
         let look = Look { size: 17.0, semi: false, italic: false, color: p.text, line_height: Some(25.0) };
         box_frame.show(ui, |ui| {
@@ -681,10 +683,10 @@ fn preview(app: &App, ed: &mut NoteEditor, ui: &mut Ui) {
             if face.type_answer.is_some() {
                 let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 34.0), Sense::hover());
                 ui.painter().rect(r, CornerRadius::same(8), p.input, Stroke::new(1.0, p.border_control), StrokeKind::Inside);
-                text(ui.painter(), r.left_center() + vec2(12.0, 0.0), Align2::LEFT_CENTER, "digite a resposta…", serif(13.0, W::Italic), p.dim, r.width());
+                text(ui.painter(), r.left_center() + vec2(12.0, 0.0), Align2::LEFT_CENTER, &tr!("note.type_placeholder"), serif(13.0, W::Italic), p.dim, r.width());
             }
         });
-        label(ui, "Verso", serif(12.0, W::Regular), p.muted);
+        label(ui, &tr!("note.back"), serif(12.0, W::Regular), p.muted);
         box_frame.show(ui, |ui| {
             ui.set_width(w - 40.0);
             ui.spacing_mut().item_spacing.y = 12.0;
@@ -704,13 +706,13 @@ fn preview(app: &App, ed: &mut NoteEditor, ui: &mut Ui) {
             }
         });
     });
-    let tip = match ed.note.kind {
-        NoteKind::Cloze => "Uma lacuna por cartão mantém cada cartão atômico (princípio da informação mínima).",
-        NoteKind::BasicReversed => "Gera dois cartões: frente → verso e verso → frente.",
-        NoteKind::TypeIn => "Digitar a resposta força a recuperação exata (útil para termos e grafias).",
-        NoteKind::Occlusion => "Arraste sobre a imagem para criar máscaras: cada uma vira um cartão.",
-        NoteKind::Basic => "Perguntas curtas e específicas são lembradas com mais consistência.",
-    };
+    let tip = &tr!(match ed.note.kind {
+        NoteKind::Cloze => "note.tip_cloze",
+        NoteKind::BasicReversed => "note.tip_reversed",
+        NoteKind::TypeIn => "note.tip_type_in",
+        NoteKind::Occlusion => "note.tip_occlusion",
+        NoteKind::Basic => "note.tip_basic",
+    });
     let rest = ui.available_height() - 40.0;
     if rest > 0.0 {
         ui.add_space(rest);

@@ -34,13 +34,13 @@ impl State {
             _ => State::New,
         }
     }
-    pub fn label(self) -> &'static str {
-        match self {
-            State::New => "novo",
-            State::Learning => "aprendendo",
-            State::Review => "revisão",
-            State::Relearning => "reaprendendo",
-        }
+    pub fn label(self) -> String {
+        crate::tr!(match self {
+            State::New => "state.new",
+            State::Learning => "state.learning",
+            State::Review => "state.review",
+            State::Relearning => "state.relearning",
+        })
     }
 }
 
@@ -131,13 +131,13 @@ pub enum ReviewOrder {
 
 impl ReviewOrder {
     pub const ALL: [ReviewOrder; 4] = [ReviewOrder::Retrievability, ReviewOrder::Due, ReviewOrder::Random, ReviewOrder::Deck];
-    pub fn label(self) -> &'static str {
-        match self {
-            ReviewOrder::Retrievability => "Recuperabilidade ↑",
-            ReviewOrder::Due => "Vencimento",
-            ReviewOrder::Random => "Aleatória",
-            ReviewOrder::Deck => "Por baralho",
-        }
+    pub fn label(self) -> String {
+        crate::tr!(match self {
+            ReviewOrder::Retrievability => "order.retrievability",
+            ReviewOrder::Due => "order.due",
+            ReviewOrder::Random => "order.random",
+            ReviewOrder::Deck => "order.deck",
+        })
     }
 }
 
@@ -150,11 +150,11 @@ pub enum NewOrder {
 
 impl NewOrder {
     pub const ALL: [NewOrder; 2] = [NewOrder::Created, NewOrder::Random];
-    pub fn label(self) -> &'static str {
-        match self {
-            NewOrder::Created => "Ordem de criação",
-            NewOrder::Random => "Aleatória",
-        }
+    pub fn label(self) -> String {
+        crate::tr!(match self {
+            NewOrder::Created => "order.created",
+            NewOrder::Random => "order.random",
+        })
     }
 }
 
@@ -168,12 +168,12 @@ pub enum NewMix {
 
 impl NewMix {
     pub const ALL: [NewMix; 3] = [NewMix::Mixed, NewMix::Before, NewMix::After];
-    pub fn label(self) -> &'static str {
-        match self {
-            NewMix::Mixed => "Intercalados",
-            NewMix::Before => "Antes das revisões",
-            NewMix::After => "Depois das revisões",
-        }
+    pub fn label(self) -> String {
+        crate::tr!(match self {
+            NewMix::Mixed => "order.mixed",
+            NewMix::Before => "order.before",
+            NewMix::After => "order.after",
+        })
     }
 }
 
@@ -643,18 +643,18 @@ impl SplitMix {
     }
 }
 
-/// "10 min", "3 d", "2,1 meses", "1,4 anos".
+/// "10 min", "3 d", "2.1 months", "1.4 years".
 pub fn interval_label(ms: i64) -> String {
     let mins = ms as f64 / MINUTE_MS as f64;
     if mins < 1.0 {
-        return "< 1 min".into();
+        return crate::tr!("time.under_minute");
     }
     if mins < 60.0 {
-        return format!("{} min", mins.round());
+        return crate::tr!("time.minutes", n = mins.round());
     }
     let hours = mins / 60.0;
     if hours < 24.0 {
-        return format!("{} h", decimal(hours, 1));
+        return crate::tr!("time.hours", n = decimal(hours, 1));
     }
     let days = hours / 24.0;
     days_label(days)
@@ -662,24 +662,23 @@ pub fn interval_label(ms: i64) -> String {
 
 pub fn days_label(days: f64) -> String {
     if days < 1.0 {
-        return format!("{} h", decimal(days * 24.0, 1));
+        return crate::tr!("time.hours", n = decimal(days * 24.0, 1));
     }
     if days < 30.0 {
-        return format!("{} d", decimal(days.round(), 0));
+        return crate::tr!("time.days", n = decimal(days.round(), 0));
     }
+    // Singular só quando o número mostrado é exatamente 1 ("1 month", "1.5 months").
     if days < 365.0 {
-        let m = days / 30.4;
-        return format!("{} {}", decimal(m, 1), if m < 1.95 { "mês" } else { "meses" });
+        let n = decimal(days / 30.4, 1);
+        return crate::tr!(if n == "1" { "time.month" } else { "time.months" }, n = n);
     }
-    let y = days / 365.0;
-    format!("{} {}", decimal(y, 1), if y < 1.95 { "ano" } else { "anos" })
+    let n = decimal(days / 365.0, 1);
+    crate::tr!(if n == "1" { "time.year" } else { "time.years" }, n = n)
 }
 
-/// Número com vírgula decimal e sem ",0" sobrando.
+/// Número com o separador decimal do idioma e sem ",0"/".0" sobrando.
 pub fn decimal(v: f64, places: usize) -> String {
-    let s = format!("{v:.places$}");
-    let s = if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_owned() } else { s };
-    s.replace('.', ",")
+    crate::i18n::decimal(v, places)
 }
 
 /// Instância do FSRS para um preset (parâmetros vazios = padrão).
@@ -788,8 +787,11 @@ mod tests {
 
     #[test]
     fn labels() {
+        crate::i18n::set_language(Some("en"));
         assert_eq!(interval_label(10 * MINUTE_MS), "10 min");
         assert_eq!(days_label(3.0), "3 d");
-        assert_eq!(days_label(64.0), "2,1 meses");
+        assert_eq!(days_label(64.0), "2.1 months");
+        assert_eq!(days_label(45.0), "1.5 months");
+        assert_eq!(days_label(30.4), "1 month");
     }
 }

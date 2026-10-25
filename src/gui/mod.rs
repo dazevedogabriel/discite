@@ -22,6 +22,7 @@ mod widgets;
 
 use crate::db::{self, Counts, Db, Deck, Preset, Subject};
 use crate::srs::{self, Clock};
+use crate::{tr, tr_n};
 use anyhow::Result;
 use eframe::egui::{self, Align2, Color32, CornerRadius, CursorIcon, Key, Modifiers, Rect, ResizeDirection, Sense, Stroke, ViewportCommand, pos2, vec2};
 use serde::{Deserialize, Serialize};
@@ -33,6 +34,8 @@ use widgets::*;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn run() -> Result<()> {
+    // Inglês até as configurações serem lidas (o banco guarda o idioma escolhido).
+    crate::i18n::set_language(Some("en"));
     let root = db::data_root();
     let db = Db::open(&root)?;
     if std::env::var_os("DISCITE_DEMO").is_some() && db.list_subjects()?.is_empty() {
@@ -52,7 +55,7 @@ pub fn run() -> Result<()> {
     };
     let options = eframe::NativeOptions { viewport, centered: true, ..Default::default() };
     eframe::run_native("Discite", options, Box::new(move |cc| Ok(Box::new(App::new(cc, db)))))
-        .map_err(|e| anyhow::anyhow!("Não foi possível abrir a janela: {e}"))
+        .map_err(|e| anyhow::anyhow!(tr!("error.window", error = e)))
 }
 
 pub const LOGO_SVG: &[u8] = include_bytes!("../../assets/logo.svg");
@@ -87,13 +90,15 @@ pub struct Settings {
     /// Teto do cronômetro por cartão (s).
     pub answer_cap_secs: u32,
     pub last_deck: Option<i64>,
+    /// Código do idioma (`en`, `pt-BR`…); `None` segue o sistema.
+    pub lang: Option<String>,
     /// No caderno a barra lateral fica recolhida (como no design) até o usuário abrir.
     pub notebook_sidebar_open: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { dark: true, rollover_hour: 4, sidebar_collapsed: false, auto_backup: true, last_backup: 0, reading_width: 640.0, answer_cap_secs: 60, last_deck: None, notebook_sidebar_open: false }
+        Settings { dark: true, rollover_hour: 4, sidebar_collapsed: false, auto_backup: true, last_backup: 0, reading_width: 640.0, answer_cap_secs: 60, last_deck: None, notebook_sidebar_open: false, lang: Some("en".into()) }
     }
 }
 
@@ -156,6 +161,7 @@ impl App {
         egui_extras::install_image_loaders(&cc.egui_ctx);
         install_fonts(&cc.egui_ctx);
         let cfg: Settings = db.meta("settings").and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        crate::i18n::set_language(cfg.lang.as_deref());
         apply(&cc.egui_ctx, cfg.dark);
         let clock = Clock { rollover_hour: cfg.rollover_hour };
         let mut app = App {
@@ -369,7 +375,7 @@ impl App {
 
     pub fn open_page(&mut self, page_id: i64) {
         let Ok(Some(meta)) = self.db.page(page_id) else {
-            self.toast("Página não encontrada");
+            self.toast(tr!("toast.page_not_found"));
             return;
         };
         if let Some(p) = self.page.as_mut() {
@@ -386,7 +392,7 @@ impl App {
     }
 
     pub fn new_page(&mut self, subject: i64, parent: Option<i64>) {
-        match self.db.add_page(subject, parent, "Sem título") {
+        match self.db.add_page(subject, parent, &tr!("page.untitled")) {
             Ok(id) => {
                 self.data_version += 1;
                 self.open_page(id);
@@ -419,7 +425,7 @@ impl App {
     pub fn add_note(&mut self) {
         match self.default_deck() {
             Some(d) => self.note_editor = Some(note_editor::NoteEditor::new_note(d, None)),
-            None => self.toast("Crie uma disciplina antes de adicionar notas"),
+            None => self.toast(tr!("toast.create_subject_first_notes")),
         }
     }
 
@@ -447,7 +453,7 @@ impl App {
                     }
                 }
             }
-            Err(e) => self.error(format!("Backup falhou: {e:#}")),
+            Err(e) => self.error(tr!("toast.backup_failed", error = format!("{e:#}"))),
         }
     }
 
@@ -506,7 +512,7 @@ impl App {
             if cmd(Key::N) {
                 match self.current_subject() {
                     Some(s) => self.new_page(s, None),
-                    None => self.toast("Crie uma disciplina primeiro"),
+                    None => self.toast(tr!("toast.create_subject_first")),
                 }
             }
             if !matches!(self.screen, Screen::Subject(_, Tab::Notebook)) && cmd(Key::F) {
@@ -547,26 +553,36 @@ fn title_bar(app: &mut App, ui: &mut egui::Ui) {
     caps_sized(&painter, pos2(mark.right() + 10.0, rect.center().y), Align2::LEFT_CENTER, &format!("Discite {VERSION}"), 11.0, p.dim);
 
     // Tema claro/escuro.
-    let tr = Rect::from_min_size(pos2(buttons_left - theme_w - 60.0, rect.top() + 5.0), vec2(theme_w, 28.0));
-    let tresp = ui.interact(tr, ui.scope_id().with("theme"), Sense::click());
+    let theme_r = Rect::from_min_size(pos2(buttons_left - theme_w - 60.0, rect.top() + 5.0), vec2(theme_w, 28.0));
+    let tresp = ui.interact(theme_r, ui.scope_id().with("theme"), Sense::click());
     if tresp.hovered() {
-        painter.rect_filled(tr, CornerRadius::same(6), p.hover);
+        painter.rect_filled(theme_r, CornerRadius::same(6), p.hover);
     }
-    let label = if app.cfg.dark { "◐  Tema escuro" } else { "◑  Tema claro" };
-    text(&painter, tr.center(), Align2::CENTER_CENTER, label, serif(11.5, W::Regular), if tresp.hovered() { p.text } else { p.muted }, theme_w);
-    a11y(&tresp, egui::accesskit::Role::Button, "Alternar tema claro/escuro", None);
+    let label = tr!(if app.cfg.dark { "app.theme_dark" } else { "app.theme_light" });
+    text(&painter, theme_r.center(), Align2::CENTER_CENTER, &label, serif(11.5, W::Regular), if tresp.hovered() { p.text } else { p.muted }, theme_w);
+    a11y(&tresp, egui::accesskit::Role::Button, &tr!("app.toggle_theme"), None);
     if tresp.clicked() {
         app.cfg.dark = !app.cfg.dark;
         app.save_settings();
         apply(&ctx, app.cfg.dark);
     }
-    caps_sized(&painter, pos2(buttons_left - 14.0, rect.center().y), Align2::RIGHT_CENTER, "PT-BR", 11.0, p.dim);
+    // Idioma: o código atual; clicar abre a lista de idiomas.
+    let code = crate::i18n::current().to_uppercase();
+    let lw = text_width(&painter, &code, serif(11.0, W::Semi)) + 20.0;
+    let lr = Rect::from_min_size(pos2(buttons_left - 8.0 - lw, rect.top() + 5.0), vec2(lw, 28.0));
+    let lresp = ui.interact(lr, ui.scope_id().with("lang"), Sense::click());
+    if lresp.hovered() {
+        painter.rect_filled(lr, CornerRadius::same(6), p.hover);
+    }
+    caps_sized(&painter, lr.center(), Align2::CENTER_CENTER, &code, 11.0, if lresp.hovered() { p.text } else { p.dim });
+    a11y(&lresp, egui::accesskit::Role::Button, &tr!("app.language"), None);
+    egui::Popup::menu(&lresp).frame(popup_frame()).width(200.0).show(|ui| settings::language_menu(app, ui));
 
     let window_buttons: &[&str] = if MAC { &[] } else { &["min", "max", "close"] };
     for (i, &kind) in window_buttons.iter().enumerate() {
         let r = Rect::from_min_size(pos2(buttons_left + i as f32 * btn_w, rect.top() + 5.0), vec2(btn_w, 28.0));
         let resp = ui.interact(r, ui.scope_id().with(kind), Sense::click());
-        a11y(&resp, egui::accesskit::Role::Button, match kind { "min" => "Minimizar", "max" => "Maximizar", _ => "Fechar" }, None);
+        a11y(&resp, egui::accesskit::Role::Button, &tr!(match kind { "min" => "app.minimize", "max" => "app.maximize", _ => "app.close" }), None);
         let (bg, fg) = match (kind, resp.hovered()) {
             ("close", true) => (Color32::from_rgb(0xE5, 0x48, 0x4D), Color32::WHITE),
             (_, true) => (p.hover, p.text),
@@ -661,26 +677,26 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
         ui.painter().galley(pos2(x0, r.top()), g1.clone(), p.text);
         let g2 = line(ui.painter(), "cite", serif(25.0, W::SemiItalic), p.accent, 200.0, -0.5);
         ui.painter().galley(pos2(x0 + g1.size().x, r.top()), g2, p.accent);
-        caps_sized(ui.painter(), pos2(x0, r.top() + g1.size().y + 8.0), Align2::LEFT_CENTER, &format!("Aprendei · v{}", &VERSION[..3]), 9.5, p.dim);
+        caps_sized(ui.painter(), pos2(x0, r.top() + g1.size().y + 8.0), Align2::LEFT_CENTER, &tr!("app.tagline", version = &VERSION[..3]), 9.5, p.dim);
     }
     ui.add_space(20.0);
 
     let scr = app.screen;
-    if nav_row(ui, "01", "Painel", scr == Screen::Dashboard).clicked() {
+    if nav_row(ui, "01", &tr!("nav.dashboard"), scr == Screen::Dashboard).clicked() {
         app.go(Screen::Dashboard);
     }
-    if nav_row(ui, "02", "Estatísticas", scr == Screen::Stats).clicked() {
+    if nav_row(ui, "02", &tr!("nav.stats"), scr == Screen::Stats).clicked() {
         app.go(Screen::Stats);
     }
-    if nav_row(ui, "03", "Cartões", scr == Screen::Browser).clicked() {
+    if nav_row(ui, "03", &tr!("nav.cards"), scr == Screen::Browser).clicked() {
         app.go(Screen::Browser);
     }
     ui.add_space(22.0);
 
     {
         let (r, _) = ui.allocate_exact_size(vec2(inner.width(), 22.0), Sense::hover());
-        caps(ui.painter(), pos2(r.left() + 10.0, r.top() + 6.0), Align2::LEFT_CENTER, "Disciplinas", p.dim);
-        caps(ui.painter(), pos2(r.right() - 10.0, r.top() + 6.0), Align2::RIGHT_CENTER, "Hoje", p.dim);
+        caps(ui.painter(), pos2(r.left() + 10.0, r.top() + 6.0), Align2::LEFT_CENTER, &tr!("nav.subjects"), p.dim);
+        caps(ui.painter(), pos2(r.right() - 10.0, r.top() + 6.0), Align2::RIGHT_CENTER, &tr!("nav.today"), p.dim);
     }
 
     let footer_h = 74.0 + if app.session.is_some() && app.screen != Screen::Review { 44.0 } else { 0.0 };
@@ -700,14 +716,15 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
             painter.circle_filled(pos2(rect.left() + 14.0, rect.center().y), 4.0, subject_color(s.color));
             text(painter, pos2(rect.left() + 28.0, rect.center().y), Align2::LEFT_CENTER, &s.name, serif(14.0, if active { W::Semi } else { W::Regular }), if active { p.text } else { p.text2 }, rect.width() - 64.0);
             text(painter, pos2(rect.right() - 10.0, rect.center().y), Align2::RIGHT_CENTER, &n.to_string(), serif(12.0, W::Regular), if n > 0 { p.muted } else { p.dim }, 40.0);
-            a11y(&resp, egui::accesskit::Role::Link, &format!("{}, {n} para hoje", s.name), Some(active));
+            a11y(&resp, egui::accesskit::Role::Link, &tr!("nav.subject_due", name = s.name, n = n), Some(active));
             let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
             if resp.clicked() {
                 app.open_subject(s.id);
             }
             resp.context_menu(|ui| subject_menu(app, ui, s));
             if active {
-                for (label, tab) in [("Caderno", Tab::Notebook), ("Baralhos", Tab::Decks), ("Estatísticas", Tab::Stats)] {
+                for (key, tab) in [("nav.notebook", Tab::Notebook), ("nav.decks", Tab::Decks), ("nav.stats", Tab::Stats)] {
+                    let label = &tr!(key);
                     let on = matches!(scr, Screen::Subject(_, t) if t == tab);
                     let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::click());
                     if on {
@@ -732,8 +749,8 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
             ui.painter().rect_filled(rect, CornerRadius::same(8), p.hover);
         }
         text(ui.painter(), pos2(rect.left() + 14.0, rect.center().y), Align2::CENTER_CENTER, "+", serif(15.0, W::Regular), p.muted, 20.0);
-        text(ui.painter(), pos2(rect.left() + 28.0, rect.center().y), Align2::LEFT_CENTER, "Disciplina", serif(14.0, W::Regular), p.muted, 120.0);
-        a11y(&resp, egui::accesskit::Role::Button, "Nova disciplina", None);
+        text(ui.painter(), pos2(rect.left() + 28.0, rect.center().y), Align2::LEFT_CENTER, &tr!("nav.subject"), serif(14.0, W::Regular), p.muted, 120.0);
+        a11y(&resp, egui::accesskit::Role::Button, &tr!("nav.new_subject"), None);
         if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
             app.modal = Some(modals::Modal::Subject { id: None, name: String::new(), color: app.subjects.len() % 8 });
         }
@@ -744,7 +761,7 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
     let mut f = ui.new_child(egui::UiBuilder::new().max_rect(bottom).layout(egui::Layout::top_down(egui::Align::Min)));
     if app.session.is_some() && app.screen != Screen::Review {
         let left = app.session.as_ref().map(|s| s.remaining()).unwrap_or(0);
-        if button_sized(&mut f, &format!("Retomar revisão · {left}"), None, Btn::Primary, vec2(inner.width(), 34.0), true).clicked() {
+        if button_sized(&mut f, &tr!("nav.resume_review", n = left), None, Btn::Primary, vec2(inner.width(), 34.0), true).clicked() {
             app.go(Screen::Review);
         }
         f.add_space(10.0);
@@ -755,37 +772,36 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
     let (r, _) = f.allocate_exact_size(vec2(inner.width(), 20.0), Sense::hover());
     f.painter().circle_filled(pos2(r.left() + 13.5, r.center().y), 3.5, if app.streak > 0 { p.good } else { p.dim });
     let streak = match app.streak {
-        0 => "Comece uma sequência hoje".to_owned(),
-        1 => "Sequência de 1 dia".to_owned(),
-        n => format!("Sequência de {n} dias"),
+        0 => tr!("nav.streak_none"),
+        n => tr_n!("nav.streak", n),
     };
     text(f.painter(), pos2(r.left() + 25.0, r.center().y), Align2::LEFT_CENTER, &streak, serif(13.0, W::Regular), p.text2, r.width() - 25.0);
     f.add_space(4.0);
     let (r, _) = f.allocate_exact_size(vec2(inner.width(), 18.0), Sense::hover());
-    let backup = if app.cfg.last_backup > 0 { format!("Backup automático {}", ago(app.cfg.last_backup)) } else { "Sem backup ainda".into() };
+    let backup = if app.cfg.last_backup > 0 { tr!("nav.backup_ago", when = ago(app.cfg.last_backup)) } else { tr!("nav.no_backup") };
     text(f.painter(), pos2(r.left() + 10.0, r.center().y), Align2::LEFT_CENTER, &backup, serif(12.0, W::Italic), p.muted, r.width());
 }
 
 fn subject_menu(app: &mut App, ui: &mut egui::Ui, s: &Subject) {
-    if menu_item(ui, "Abrir caderno", false).clicked() {
+    if menu_item(ui, &tr!("nav.open_notebook"), false).clicked() {
         subject::open_notebook(app, s.id);
     }
-    if menu_item(ui, "Estudar", false).clicked() {
+    if menu_item(ui, &tr!("nav.study"), false).clicked() {
         review::start(app, review::Scope::Subject(s.id));
     }
     menu_sep(ui);
-    if menu_item(ui, "Renomear ou mudar cor…", false).clicked() {
+    if menu_item(ui, &tr!("nav.rename_subject"), false).clicked() {
         app.modal = Some(modals::Modal::Subject { id: Some(s.id), name: s.name.clone(), color: s.color });
     }
     let idx = app.subjects.iter().position(|x| x.id == s.id).unwrap_or(0);
-    if idx > 0 && menu_item(ui, "Mover para cima", false).clicked() {
+    if idx > 0 && menu_item(ui, &tr!("common.move_up"), false).clicked() {
         swap_subjects(app, idx, idx - 1);
     }
-    if idx + 1 < app.subjects.len() && menu_item(ui, "Mover para baixo", false).clicked() {
+    if idx + 1 < app.subjects.len() && menu_item(ui, &tr!("common.move_down"), false).clicked() {
         swap_subjects(app, idx, idx + 1);
     }
     menu_sep(ui);
-    if menu_item(ui, "Excluir disciplina…", false).clicked() {
+    if menu_item(ui, &tr!("nav.delete_subject"), false).clicked() {
         app.modal = Some(modals::Modal::DeleteSubject(s.id));
     }
 }
@@ -814,7 +830,8 @@ fn sidebar_collapsed(app: &mut App, ui: &mut egui::Ui) {
     let (r, _) = ui.allocate_exact_size(vec2(40.0, 36.0), Sense::hover());
     logo(ui, Rect::from_center_size(r.center() - vec2(0.0, 4.0), vec2(30.0, 30.0)));
     let scr = app.screen;
-    for (num, label, target) in [("01", "Painel", Screen::Dashboard), ("02", "Estatísticas", Screen::Stats), ("03", "Cartões", Screen::Browser)] {
+    for (num, key, target) in [("01", "nav.dashboard", Screen::Dashboard), ("02", "nav.stats", Screen::Stats), ("03", "nav.cards", Screen::Browser)] {
+        let label = &tr!(key);
         let on = scr == target;
         let (r, resp) = ui.allocate_exact_size(vec2(40.0, 36.0), Sense::click());
         if on {
@@ -841,7 +858,7 @@ fn sidebar_collapsed(app: &mut App, ui: &mut egui::Ui) {
         }
         ui.painter().circle_filled(r.center(), 5.0, subject_color(s.color));
         let c = app.subject_counts(s.id);
-        let label = format!("{}, {} para hoje", s.name, c.new + c.learn + c.review);
+        let label = tr!("nav.subject_due", name = s.name, n = c.new + c.learn + c.review);
         a11y(&resp, egui::accesskit::Role::Link, &label, Some(on));
         if resp.on_hover_text(label).clicked() {
             app.open_subject(s.id);
@@ -851,7 +868,7 @@ fn sidebar_collapsed(app: &mut App, ui: &mut egui::Ui) {
     if rest > 0.0 {
         ui.add_space(rest);
     }
-    if icon_button(ui, "»", "Expandir barra lateral (Ctrl \\)", 36.0).clicked() {
+    if icon_button(ui, "»", &tr!("nav.expand_sidebar"), 36.0).clicked() {
         if matches!(app.screen, Screen::Subject(_, Tab::Notebook)) {
             app.cfg.notebook_sidebar_open = true;
         } else {

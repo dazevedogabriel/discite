@@ -5,6 +5,7 @@
 mod cards;
 mod db;
 mod gui;
+mod i18n;
 mod media;
 mod rich;
 mod search;

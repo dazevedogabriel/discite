@@ -8,6 +8,7 @@ use super::modals::Modal;
 use super::theme::*;
 use super::widgets::*;
 use super::{App, Screen};
+use crate::{tr, tr_n};
 use crate::db::{self, Preset, Rev};
 use crate::srs::{self, Algorithm, LeechAction, NewMix, NewOrder, ReviewOrder};
 use eframe::egui::{self, Align2, CornerRadius, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
@@ -110,11 +111,11 @@ fn start_job(app: &mut App, kind: &'static str) {
                 let items = fsrs_items(&histories, &clock);
                 let res = (|| -> anyhow::Result<JobResult> {
                     if items.is_empty() {
-                        anyhow::bail!("Ainda não há revisões suficientes neste preset.");
+                        anyhow::bail!(crate::tr!("preset.not_enough_reviews"));
                     }
                     let eval = |params: &[f32]| -> Option<(f32, f32)> { fsrs::FSRS::new(params).ok()?.evaluate(items.clone(), |_| true).ok().map(|e| (e.log_loss, e.rmse_bins)) };
                     if kind == "evaluate" {
-                        let e = eval(&preset.params).ok_or_else(|| anyhow::anyhow!("Não foi possível avaliar"))?;
+                        let e = eval(&preset.params).ok_or_else(|| anyhow::anyhow!(crate::tr!("preset.eval_failed")))?;
                         return Ok(JobResult::Evaluated { preset: preset.id, eval: e });
                     }
                     let before = eval(&preset.params);
@@ -126,8 +127,8 @@ fn start_job(app: &mut App, kind: &'static str) {
                         ..Default::default()
                     })
                     .map_err(|e| anyhow::anyhow!("{}", match e {
-                        fsrs::FSRSError::NotEnoughData => "Dados insuficientes: continue estudando (algumas centenas de revisões ajudam).".to_owned(),
-                        other => format!("Falha na otimização: {other:?}"),
+                        fsrs::FSRSError::NotEnoughData => crate::tr!("preset.not_enough_data"),
+                        other => crate::tr!("preset.optimize_failed", error = format!("{other:?}")),
                     }))?;
                     let after = eval(&params);
                     Ok(JobResult::Optimized { preset: preset.id, params, before, after })
@@ -163,7 +164,7 @@ fn start_job(app: &mut App, kind: &'static str) {
                     }
                     dr += 0.01;
                 }
-                let _ = tx.send(if points.is_empty() { JobResult::Failed("A simulação falhou".into()) } else { JobResult::Simulated { preset: preset.id, points } });
+                let _ = tx.send(if points.is_empty() { JobResult::Failed(crate::tr!("preset.sim_failed")) } else { JobResult::Simulated { preset: preset.id, points } });
             });
         }
     }
@@ -204,12 +205,8 @@ pub fn ui(app: &mut App, ui: &mut Ui, id: i64) {
     let mut subj_names: Vec<String> = decks.iter().filter_map(|d| app.deck(*d)).filter_map(|d| app.subject(d.subject_id)).map(|s| s.name.clone()).collect();
     subj_names.sort();
     subj_names.dedup();
-    let sub = format!(
-        "Compartilhado por {} {}{}",
-        decks.len(),
-        if decks.len() == 1 { "baralho" } else { "baralhos" },
-        if subj_names.is_empty() { String::new() } else { format!(" de {}", join_pt(&subj_names)) }
-    );
+    let subjects = if subj_names.is_empty() { String::new() } else { tr!("preset.of_subjects", list = join_list(&subj_names)) };
+    let sub = tr_n!("preset.shared_by", decks.len(), subjects = subjects);
     let mut save = false;
     let mut restore = false;
     let presets = app.presets.clone();
@@ -218,12 +215,13 @@ pub fn ui(app: &mut App, ui: &mut Ui, id: i64) {
     let mut rename = false;
     let mut delete = false;
     let dirty = app.preset_view.as_ref().is_some_and(|v| v.dirty);
-    super::header(ui, "Opções do preset", &sub, |ui| {
-        let w = button_width(ui, "Salvar", None, 13.0, 14.0);
-        if button_sized(ui, "Salvar", None, Btn::Primary, vec2(w, 34.0), dirty).clicked() {
+    super::header(ui, &tr!("preset.title"), &sub, |ui| {
+        let save_label = tr!("common.save");
+        let w = button_width(ui, &save_label, None, 13.0, 14.0);
+        if button_sized(ui, &save_label, None, Btn::Primary, vec2(w, 34.0), dirty).clicked() {
             save = true;
         }
-        if button(ui, "Restaurar padrão", Btn::Secondary, 34.0).clicked() {
+        if button(ui, &tr!("preset.restore_defaults"), Btn::Secondary, 34.0).clicked() {
             restore = true;
         }
         let name = app.preset(id).map(|p| p.name.clone()).unwrap_or_default();
@@ -234,13 +232,13 @@ pub fn ui(app: &mut App, ui: &mut Ui, id: i64) {
                 }
             }
             menu_sep(ui);
-            if menu_item(ui, "Novo preset…", false).clicked() {
+            if menu_item(ui, &tr!("preset.new"), false).clicked() {
                 new_preset = true;
             }
-            if menu_item(ui, "Renomear…", false).clicked() {
+            if menu_item(ui, &tr!("common.rename"), false).clicked() {
                 rename = true;
             }
-            if id != 1 && menu_item(ui, "Excluir preset", false).clicked() {
+            if id != 1 && menu_item(ui, &tr!("preset.delete"), false).clicked() {
                 delete = true;
             }
         });
@@ -297,16 +295,17 @@ pub fn ui(app: &mut App, ui: &mut Ui, id: i64) {
     let _ = p;
 }
 
-/// 0,90 (sempre duas casas).
+/// 0.90 / 0,90 (sempre duas casas).
 fn ret2(v: f32) -> String {
-    format!("{v:.2}").replace('.', ",")
+    crate::i18n::fixed(v as f64, 2)
 }
 
-fn join_pt(v: &[String]) -> String {
+/// "A, B and C" / "A, B e C".
+fn join_list(v: &[String]) -> String {
     match v.len() {
         0 => String::new(),
         1 => v[0].clone(),
-        _ => format!("{} e {}", v[..v.len() - 1].join(", "), v[v.len() - 1]),
+        _ => tr!("preset.list_and", rest = v[..v.len() - 1].join(", "), last = v[v.len() - 1]),
     }
 }
 
@@ -318,7 +317,7 @@ fn save_preset(app: &mut App) {
             v.draft.cfg.relearning_steps = r;
         }
         _ => {
-            app.toast("Passos inválidos: use algo como “1m 10m 1h 1d”");
+            app.toast(tr!("toast.bad_steps"));
             return;
         }
     }
@@ -327,7 +326,7 @@ fn save_preset(app: &mut App) {
     match app.db.save_preset(&draft) {
         Ok(()) => {
             app.reload();
-            app.toast("Preset salvo");
+            app.toast(tr!("toast.preset_saved"));
         }
         Err(e) => app.error(e),
     }
@@ -347,7 +346,7 @@ fn scheduling_card(app: &mut App, ui: &mut Ui) {
     let v = app.preset_view.as_mut().unwrap();
     card_box(ui, |ui| {
         ui.horizontal(|ui| {
-            label(ui, "Agendamento", serif(16.0, W::Semi), p.text);
+            label(ui, &tr!("preset.scheduling"), serif(16.0, W::Semi), p.text);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let mut sel = if v.draft.cfg.algorithm == Algorithm::Fsrs { 0 } else { 1 };
                 if segmented(ui, &["FSRS-6", "SM-2"], &mut sel, 26.0, true) {
@@ -357,13 +356,13 @@ fn scheduling_card(app: &mut App, ui: &mut Ui) {
             });
         });
         if v.draft.cfg.algorithm == Algorithm::Sm2 {
-            para(ui, "SM-2 usa o fator de facilidade clássico do Anki. O FSRS continua acompanhando a memória de cada cartão para as estatísticas.", serif(12.5, W::Italic), p.muted);
+            para(ui, &tr!("preset.sm2_note"), serif(12.5, W::Italic), p.muted);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 14.0;
-                for (lab, val, lo, hi) in [("Facilidade inicial", &mut v.draft.cfg.starting_ease, 1.3f32, 5.0f32), ("Bônus do Fácil", &mut v.draft.cfg.easy_bonus, 1.0, 3.0), ("Multiplicador do Difícil", &mut v.draft.cfg.hard_multiplier, 1.0, 2.0)] {
+                for (lab, val, lo, hi) in [(tr!("preset.starting_ease"), &mut v.draft.cfg.starting_ease, 1.3f32, 5.0f32), (tr!("preset.easy_bonus"), &mut v.draft.cfg.easy_bonus, 1.0, 3.0), (tr!("preset.hard_multiplier"), &mut v.draft.cfg.hard_multiplier, 1.0, 2.0)] {
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 5.0;
-                        caps_label(ui, lab);
+                        caps_label(ui, &lab);
                         if ui.add(egui::DragValue::new(val).speed(0.01).range(lo..=hi).fixed_decimals(2)).changed() {
                             v.dirty = true;
                         }
@@ -374,7 +373,7 @@ fn scheduling_card(app: &mut App, ui: &mut Ui) {
         }
         // Retenção desejada: número grande + controle deslizante.
         let (row, _) = ui.allocate_exact_size(vec2(ui.available_width(), 66.0), Sense::hover());
-        caps(ui.painter(), pos2(row.left(), row.top() + 8.0), Align2::LEFT_CENTER, "Retenção desejada", p.dim);
+        caps(ui.painter(), pos2(row.left(), row.top() + 8.0), Align2::LEFT_CENTER, &tr!("preset.desired_retention"), p.dim);
         text(ui.painter(), pos2(row.left(), row.top() + 42.0), Align2::LEFT_CENTER, &ret2(v.draft.cfg.desired_retention), serif(44.0, W::Semi), p.text, 140.0);
         let track = Rect::from_min_max(pos2(row.left() + 150.0, row.top() + 22.0), pos2(row.right(), row.top() + 40.0));
         let resp = ui.interact(track.expand2(vec2(9.0, 6.0)), ui.scope_id().with("dr_slider"), Sense::click_and_drag());
@@ -396,7 +395,7 @@ fn scheduling_card(app: &mut App, ui: &mut Ui) {
                 v.dirty = true;
             }
         }
-        a11y(&resp, egui::accesskit::Role::Slider, "Retenção desejada", None);
+        a11y(&resp, egui::accesskit::Role::Slider, &tr!("preset.desired_retention"), None);
         let f = (v.draft.cfg.desired_retention - lo) / (hi - lo);
         let cy = track.center().y;
         ui.painter().rect_filled(Rect::from_min_max(pos2(track.left(), cy - 2.0), pos2(track.right(), cy + 2.0)), CornerRadius::same(2), p.chip);
@@ -417,9 +416,9 @@ fn scheduling_card(app: &mut App, ui: &mut Ui) {
             let b = Rect::from_min_size(pos2(r3.left() + i as f32 * (bw + 10.0), r3.top()), vec2(bw, 56.0));
             let current = i == 1;
             ui.painter().rect(b, CornerRadius::same(10), if current { p.accent_tint } else { p.window }, Stroke::new(1.0, if current { p.accent } else { p.border }), StrokeKind::Inside);
-            let lab = format!("em {}{}", ret2(*dr), if current { " · atual" } else { "" });
+            let lab = format!("{}{}", tr!("preset.at", value = ret2(*dr)), if current { tr!("preset.current") } else { String::new() });
             text(ui.painter(), pos2(b.left() + 12.0, b.top() + 17.0), Align2::LEFT_CENTER, &lab, serif(12.0, W::Regular), if current { p.accent } else { p.muted }, bw - 20.0);
-            let val = at(*dr).map(|n| format!("{} rev./dia", n.round())).unwrap_or_else(|| "calculando…".into());
+            let val = at(*dr).map(|n| tr!("preset.per_day", n = n.round())).unwrap_or_else(|| tr!("preset.computing"));
             text(ui.painter(), pos2(b.left() + 12.0, b.top() + 38.0), Align2::LEFT_CENTER, &val, serif(16.0, W::Semi), p.text, bw - 20.0);
         }
     });
@@ -429,67 +428,67 @@ fn steps_card(app: &mut App, ui: &mut Ui) {
     let p = pal();
     let v = app.preset_view.as_mut().unwrap();
     card_box(ui, |ui| {
-        label(ui, "Passos e limites", serif(16.0, W::Semi), p.text);
+        label(ui, &tr!("preset.steps_limits"), serif(16.0, W::Semi), p.text);
         let w = ui.available_width();
         let cw = (w - 28.0) / 3.0;
         egui::Grid::new("steps_grid").num_columns(3).spacing(vec2(14.0, 12.0)).show(ui, |ui| {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 5.0;
-                caps_label(ui, "Passos de aprendizado");
+                caps_label(ui, &tr!("preset.learning_steps"));
                 let ok = srs::parse_steps(&v.learn).is_some();
                 if text_field_font(ui, &mut v.learn, "1m 10m", cw, 36.0, mono(12.5)).changed() {
                     v.dirty = true;
                 }
                 if !ok {
-                    label(ui, "formato: 1m 10m 1h 1d", serif(11.0, W::Italic), p.again);
+                    label(ui, &tr!("preset.steps_format"), serif(11.0, W::Italic), p.again);
                 }
             });
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 5.0;
-                caps_label(ui, "Reaprendizado");
+                caps_label(ui, &tr!("preset.relearning_steps"));
                 if text_field_font(ui, &mut v.relearn, "10m", cw, 36.0, mono(12.5)).changed() {
                     v.dirty = true;
                 }
             });
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 5.0;
-                caps_label(ui, "Intervalo máximo");
-                if number_field(ui, "maxivl", &mut v.draft.cfg.max_interval, "dias", cw) {
+                caps_label(ui, &tr!("preset.max_interval"));
+                if number_field(ui, "maxivl", &mut v.draft.cfg.max_interval, &tr!("preset.days"), cw) {
                     v.dirty = true;
                 }
             });
             ui.end_row();
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 5.0;
-                caps_label(ui, "Novos por dia");
+                caps_label(ui, &tr!("preset.new_per_day"));
                 if number_field(ui, "newpd", &mut v.draft.cfg.new_per_day, "", cw) {
                     v.dirty = true;
                 }
             });
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 5.0;
-                caps_label(ui, "Revisões por dia");
+                caps_label(ui, &tr!("preset.reviews_per_day"));
                 if number_field(ui, "revpd", &mut v.draft.cfg.reviews_per_day, "", cw) {
                     v.dirty = true;
                 }
             });
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 5.0;
-                caps_label(ui, "Sanguessuga");
-                let cur = format!("{} lapsos · {}", v.draft.cfg.leech_threshold, if v.draft.cfg.leech_action == LeechAction::Tag { "marcar" } else { "suspender" });
+                caps_label(ui, &tr!("preset.leech"));
+                let cur = tr!("preset.leech_value", n = v.draft.cfg.leech_threshold, action = tr!(if v.draft.cfg.leech_action == LeechAction::Tag { "preset.leech_tag" } else { "preset.leech_suspend" }));
                 select_field(ui, "leech", &cur, None, cw, 36.0, |ui| {
                     for n in [4u32, 6, 8, 10, 12, 16] {
-                        if menu_item(ui, &format!("{n} lapsos"), v.draft.cfg.leech_threshold == n).clicked() {
+                        if menu_item(ui, &tr!("preset.lapses", n = n), v.draft.cfg.leech_threshold == n).clicked() {
                             v.draft.cfg.leech_threshold = n;
                             v.dirty = true;
                         }
                     }
                     menu_sep(ui);
-                    if menu_item(ui, "Marcar com tag", v.draft.cfg.leech_action == LeechAction::Tag).clicked() {
+                    if menu_item(ui, &tr!("preset.leech_tag_long"), v.draft.cfg.leech_action == LeechAction::Tag).clicked() {
                         v.draft.cfg.leech_action = LeechAction::Tag;
                         v.dirty = true;
                     }
-                    if menu_item(ui, "Suspender", v.draft.cfg.leech_action == LeechAction::Suspend).clicked() {
+                    if menu_item(ui, &tr!("preset.leech_suspend_long"), v.draft.cfg.leech_action == LeechAction::Suspend).clicked() {
                         v.draft.cfg.leech_action = LeechAction::Suspend;
                         v.dirty = true;
                     }
@@ -507,48 +506,48 @@ fn order_card(app: &mut App, ui: &mut Ui) {
         let w = ui.available_width();
         let cw = (w - 28.0) / 2.0;
         egui::Grid::new("order_grid").num_columns(2).spacing(vec2(28.0, 12.0)).min_col_width(cw).show(ui, |ui| {
-            option_row(ui, "Ordem das revisões", cw, |ui| {
+            option_row(ui, &tr!("preset.review_order"), cw, |ui| {
                 let cur = v.draft.cfg.review_order;
-                inline_select(ui, "rev_order", cur.label(), |ui| {
+                inline_select(ui, "rev_order", &cur.label(), |ui| {
                     for o in ReviewOrder::ALL {
-                        if menu_item(ui, o.label(), o == cur).clicked() {
+                        if menu_item(ui, &o.label(), o == cur).clicked() {
                             v.draft.cfg.review_order = o;
                             v.dirty = true;
                         }
                     }
                 });
             });
-            option_row(ui, "Enterrar irmãos", cw, |ui| {
-                if toggle(ui, &mut v.draft.cfg.bury_siblings, "Enterrar irmãos").clicked() {
+            option_row(ui, &tr!("preset.bury"), cw, |ui| {
+                if toggle(ui, &mut v.draft.cfg.bury_siblings, &tr!("preset.bury")).clicked() {
                     v.dirty = true;
                 }
             });
             ui.end_row();
-            option_row(ui, "Novos com revisões", cw, |ui| {
+            option_row(ui, &tr!("preset.new_mix"), cw, |ui| {
                 let cur = v.draft.cfg.new_mix;
-                inline_select(ui, "new_mix", cur.label(), |ui| {
+                inline_select(ui, "new_mix", &cur.label(), |ui| {
                     for o in NewMix::ALL {
-                        if menu_item(ui, o.label(), o == cur).clicked() {
+                        if menu_item(ui, &o.label(), o == cur).clicked() {
                             v.draft.cfg.new_mix = o;
                             v.dirty = true;
                         }
                     }
                 });
             });
-            option_row(ui, "Fuzz e balanceamento de carga", cw, |ui| {
+            option_row(ui, &tr!("preset.fuzz"), cw, |ui| {
                 let mut on = v.draft.cfg.fuzz && v.draft.cfg.load_balance;
-                if toggle(ui, &mut on, "Fuzz e balanceamento de carga").clicked() {
+                if toggle(ui, &mut on, &tr!("preset.fuzz")).clicked() {
                     v.draft.cfg.fuzz = on;
                     v.draft.cfg.load_balance = on;
                     v.dirty = true;
                 }
             });
             ui.end_row();
-            option_row(ui, "Ordem dos novos", cw, |ui| {
+            option_row(ui, &tr!("preset.new_order"), cw, |ui| {
                 let cur = v.draft.cfg.new_order;
-                inline_select(ui, "new_order", cur.label(), |ui| {
+                inline_select(ui, "new_order", &cur.label(), |ui| {
                     for o in NewOrder::ALL {
-                        if menu_item(ui, o.label(), o == cur).clicked() {
+                        if menu_item(ui, &o.label(), o == cur).clicked() {
                             v.draft.cfg.new_order = o;
                             v.dirty = true;
                         }
@@ -580,25 +579,25 @@ fn optimizer_card(app: &mut App, ui: &mut Ui) {
             let since = v.draft.last_optimized_at.map(|t| (srs::now_ms() - t) / srs::DAY_MS);
             let suggested = v.reviews >= 400 && since.is_none_or(|d| d >= 30);
             ui.horizontal(|ui| {
-                label(ui, "Otimizador", serif(16.0, W::Semi), p.text);
+                label(ui, &tr!("preset.optimizer"), serif(16.0, W::Semi), p.text);
                 if suggested {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        label(ui, "sugerido", serif(12.0, W::Regular), p.hard);
+                        label(ui, &tr!("preset.suggested"), serif(12.0, W::Regular), p.hard);
                     });
                 }
             });
             let last = match since {
-                None => "Nunca otimizado: usando os parâmetros padrão do FSRS-6.".to_owned(),
-                Some(0) => "Otimizado hoje.".to_owned(),
-                Some(d) => format!("Última otimização há {d} dias."),
+                None => tr!("preset.never_optimized"),
+                Some(0) => tr!("preset.optimized_today"),
+                Some(d) => tr!("preset.optimized_ago", n = d),
             };
-            para(ui, &format!("{} revisões neste preset. {last}", thousands(v.reviews)), serif(13.0, W::Regular), p.muted);
+            para(ui, &tr!("preset.reviews_here", n = thousands(v.reviews), last = last), serif(13.0, W::Regular), p.muted);
             // Atual × novo.
             let (t, _) = ui.allocate_exact_size(vec2(ui.available_width(), 84.0), Sense::hover());
             let c1 = t.right() - 78.0;
             let c2 = t.right();
-            caps(ui.painter(), pos2(c1, t.top() + 8.0), Align2::RIGHT_CENTER, "Atual", p.dim);
-            caps(ui.painter(), pos2(c2, t.top() + 8.0), Align2::RIGHT_CENTER, "Novo", p.dim);
+            caps(ui.painter(), pos2(c1, t.top() + 8.0), Align2::RIGHT_CENTER, &tr!("preset.current_col"), p.dim);
+            caps(ui.painter(), pos2(c2, t.top() + 8.0), Align2::RIGHT_CENTER, &tr!("preset.new_col"), p.dim);
             let new_eval = v.proposal.as_ref().and_then(|x| x.1);
             for (i, (lab, a, b, fmt)) in [
                 ("Log loss", v.eval_now.map(|e| e.0), new_eval.map(|e| e.0), 0u8),
@@ -620,7 +619,7 @@ fn optimizer_card(app: &mut App, ui: &mut Ui) {
             if let Some((params, _)) = &v.proposal {
                 let same = params.iter().zip(fsrs::DEFAULT_PARAMETERS.iter()).all(|(a, b)| (a - b).abs() < 1e-4);
                 if same {
-                    para(ui, "Ainda há poucos dados: o otimizador manteve os parâmetros padrão.", serif(12.0, W::Italic), p.hard);
+                    para(ui, &tr!("preset.kept_defaults"), serif(12.0, W::Italic), p.hard);
                 }
             }
             let shown: Vec<f32> = v.proposal.as_ref().map(|x| x.0.clone()).unwrap_or_else(|| if v.draft.params.is_empty() { fsrs::DEFAULT_PARAMETERS.to_vec() } else { v.draft.params.clone() });
@@ -634,23 +633,23 @@ fn optimizer_card(app: &mut App, ui: &mut Ui) {
                 let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 18.0), Sense::hover());
                 let frac = if total > 0 { cur as f32 / total as f32 } else { 0.0 };
                 progress(ui.painter(), Rect::from_min_size(r.left_center() - vec2(0.0, 2.0), vec2(r.width() - 90.0, 4.0)), frac, p.accent);
-                text(ui.painter(), r.right_center(), Align2::RIGHT_CENTER, if kind == "optimize" { "otimizando…" } else { "avaliando…" }, serif(12.0, W::Italic), p.muted, 90.0);
+                text(ui.painter(), r.right_center(), Align2::RIGHT_CENTER, &tr!(if kind == "optimize" { "preset.optimizing" } else { "preset.evaluating" }), serif(12.0, W::Italic), p.muted, 90.0);
             }
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 let busy = v.running.is_some();
                 if let Some((params, _)) = &v.proposal {
                     let w = ui.available_width() - 110.0;
-                    if button_sized(ui, "Aplicar novos parâmetros", None, Btn::Primary, vec2(w, 34.0), !busy).clicked() {
+                    if button_sized(ui, &tr!("preset.apply"), None, Btn::Primary, vec2(w, 34.0), !busy).clicked() {
                         apply_params = Some(params.clone());
                     }
                 } else {
                     let w = ui.available_width() - 110.0;
-                    if button_sized(ui, "Otimizar parâmetros", None, Btn::Primary, vec2(w, 34.0), !busy && v.reviews > 0).clicked() {
+                    if button_sized(ui, &tr!("preset.optimize"), None, Btn::Primary, vec2(w, 34.0), !busy && v.reviews > 0).clicked() {
                         start = Some("optimize");
                     }
                 }
-                if button_sized(ui, "Avaliar", None, Btn::Secondary, vec2(100.0, 34.0), !busy && v.reviews > 0).clicked() {
+                if button_sized(ui, &tr!("preset.evaluate"), None, Btn::Secondary, vec2(100.0, 34.0), !busy && v.reviews > 0).clicked() {
                     start = Some("evaluate");
                 }
             });
@@ -699,7 +698,7 @@ fn recompute_memory(app: &mut App) {
         }
     }
     app.changed();
-    app.toast(format!("Parâmetros aplicados · memória de {n} cartões recalculada"));
+    app.toast(tr!("toast.params_applied", n = n));
     let _ = db::new_id;
 }
 
@@ -713,12 +712,12 @@ fn simulator_card(app: &mut App, ui: &mut Ui) {
             ui.set_min_height(ui.available_height() - 36.0);
             ui.spacing_mut().item_spacing.y = 10.0;
             ui.horizontal(|ui| {
-                label(ui, "Simulador", serif(16.0, W::Semi), p.text);
+                label(ui, &tr!("preset.simulator"), serif(16.0, W::Semi), p.text);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if icon_button(ui, "↻", "Simular de novo", 24.0).clicked() {
+                    if icon_button(ui, "↻", &tr!("preset.simulate_again"), 24.0).clicked() {
                         rerun = true;
                     }
-                    label(ui, "365 dias", serif(12.0, W::Regular), p.muted);
+                    label(ui, &tr!("preset.days_365"), serif(12.0, W::Regular), p.muted);
                 });
             });
             let (chart, _) = ui.allocate_exact_size(vec2(ui.available_width(), 132.0), Sense::hover());
@@ -737,7 +736,7 @@ fn simulator_card(app: &mut App, ui: &mut Ui) {
                     super::charts::dashed_v(ui.painter(), cx, plot.top() + 2.0, plot.bottom(), p.text2);
                 }
                 _ => {
-                    text(ui.painter(), plot.center(), Align2::CENTER_CENTER, if v.running == Some("simulate") { "simulando…" } else { "sem simulação" }, serif(12.0, W::Italic), p.muted, plot.width());
+                    text(ui.painter(), plot.center(), Align2::CENTER_CENTER, &tr!(if v.running == Some("simulate") { "preset.simulating" } else { "preset.no_simulation" }), serif(12.0, W::Italic), p.muted, plot.width());
                 }
             }
             for t in [0.70f32, 0.90, 0.99] {
@@ -746,11 +745,11 @@ fn simulator_card(app: &mut App, ui: &mut Ui) {
                 text(ui.painter(), pos2(x, chart.bottom() - 4.0), al, &ret2(t), serif(10.0, W::Regular), p.muted, 40.0);
             }
             let (lr, _) = ui.allocate_exact_size(vec2(ui.available_width(), 16.0), Sense::hover());
-            super::charts::legend(ui.painter(), lr.left_center(), &[("carga diária", p.hard), ("conhecimento retido", p.accent)], true);
+            super::charts::legend(ui.painter(), lr.left_center(), &[(&tr!("preset.daily_load"), p.hard), (&tr!("preset.retained"), p.accent)], true);
             if let Some(pts) = &v.sim {
                 // Ponto a partir do qual cada ponto de retenção custa muito mais revisões do que acrescenta em memória.
                 let knee = knee(pts);
-                para(ui, &format!("Acima de {}, cada ponto de retenção custa bem mais revisões do que acrescenta em memória.", ret2(knee)), serif(12.5, W::Italic), p.text2);
+                para(ui, &tr!("preset.knee", value = ret2(knee)), serif(12.5, W::Italic), p.text2);
             }
         });
     }

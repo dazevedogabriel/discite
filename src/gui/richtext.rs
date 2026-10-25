@@ -163,7 +163,7 @@ pub fn image(ui: &mut Ui, uri: &str, max_w: f32, max_h: f32, radius: u8, sense: 
             let p = pal();
             let (r, resp) = ui.allocate_exact_size(vec2(max_w.min(320.0), 60.0), egui::Sense::hover());
             ui.painter().rect_stroke(r, egui::CornerRadius::same(8), Stroke::new(1.0, p.border_strong), egui::StrokeKind::Inside);
-            ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "imagem indisponível", serif(12.0, W::Italic), p.muted);
+            ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, crate::tr!("media.unavailable"), serif(12.0, W::Italic), p.muted);
             resp
         }
     }

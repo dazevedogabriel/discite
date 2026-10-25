@@ -6,6 +6,7 @@ use super::modals::Modal;
 use super::theme::*;
 use super::widgets::*;
 use super::{App, review};
+use crate::{tr, tr_n};
 use crate::cards;
 use crate::db::{Card, Note};
 use crate::rich;
@@ -29,19 +30,19 @@ pub enum Col {
 }
 
 impl Col {
-    fn label(self) -> &'static str {
+    fn label(self) -> String {
         match self {
-            Col::Front => "Frente",
-            Col::Deck => "Baralho",
-            Col::Due => "Vence",
-            Col::Ivl => "Int.",
-            Col::D => "D",
-            Col::S => "S",
-            Col::R => "R",
-            Col::Lapses => "L",
-            Col::Reps => "Rev.",
-            Col::Kind => "Tipo",
-            Col::Added => "Criado",
+            Col::Front => tr!("browser.col_front"),
+            Col::Deck => tr!("browser.col_deck"),
+            Col::Due => tr!("browser.col_due"),
+            Col::Ivl => tr!("browser.col_ivl"),
+            Col::D => "D".into(),
+            Col::S => "S".into(),
+            Col::R => "R".into(),
+            Col::Lapses => "L".into(),
+            Col::Reps => tr!("browser.col_reps"),
+            Col::Kind => tr!("browser.col_kind"),
+            Col::Added => tr!("browser.col_added"),
         }
     }
     fn width(self) -> f32 {
@@ -219,15 +220,15 @@ fn sort_rows(b: &mut BrowserState) {
 
 fn due_label(app: &App, c: &Card) -> String {
     match c.s.state {
-        State::New => "novo".into(),
-        _ if c.queue == Queue::Suspended => "suspenso".into(),
+        State::New => tr!("browser.due_new"),
+        _ if c.queue == Queue::Suspended => tr!("browser.due_suspended"),
         _ => {
             let today = app.clock.today();
             let d = app.clock.day_of(c.s.due) - today;
             match d {
-                i64::MIN..=0 => "hoje".into(),
-                1 => "amanhã".into(),
-                2..=60 => format!("em {d} d"),
+                i64::MIN..=0 => tr!("browser.due_today"),
+                1 => tr!("browser.due_tomorrow"),
+                2..=60 => tr!("browser.due_in_days", n = d),
                 _ => short_date(c.s.due),
             }
         }
@@ -238,11 +239,11 @@ fn due_label(app: &App, c: &Card) -> String {
 fn compact_days(d: f32) -> String {
     let d = d as f64;
     if d < 60.0 {
-        format!("{} d", d.round())
+        tr!("browser.ivl_days", n = d.round())
     } else if d < 365.0 {
-        format!("{} m", srs::decimal(d / 30.4, 1))
+        tr!("browser.ivl_months", n = srs::decimal(d / 30.4, 1))
     } else {
-        format!("{} a", srs::decimal(d / 365.0, 1))
+        tr!("browser.ivl_years", n = srs::decimal(d / 365.0, 1))
     }
 }
 
@@ -266,19 +267,20 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
     let head = Rect::from_min_size(full.min, vec2(full.width(), 132.0));
     ui.painter().hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, p.line));
     let inner = head.shrink2(vec2(20.0, 14.0));
-    let t = text(ui.painter(), pos2(inner.left(), inner.top() + 14.0), Align2::LEFT_CENTER, "Cartões", serif(22.0, W::Semi), p.text, 200.0);
-    let count = format!("{} de {} cartões{}", thousands(app.browser.rows.len() as i64), thousands(app.browser.total), if app.browser.selected.len() > 1 { format!(" · {} selecionados", app.browser.selected.len()) } else { String::new() });
+    let t = text(ui.painter(), pos2(inner.left(), inner.top() + 14.0), Align2::LEFT_CENTER, &tr!("browser.title"), serif(22.0, W::Semi), p.text, 200.0);
+    let selected = if app.browser.selected.len() > 1 { tr!("browser.selected_suffix", n = app.browser.selected.len()) } else { String::new() };
+    let count = tr!("browser.count", shown = thousands(app.browser.rows.len() as i64), total = thousands(app.browser.total), selected = selected);
     text(ui.painter(), pos2(t.right() + 12.0, inner.top() + 16.0), Align2::LEFT_CENTER, &count, serif(13.0, W::Regular), p.muted, 400.0);
     let mut bu = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(inner.min, vec2(inner.width(), 30.0))).layout(egui::Layout::right_to_left(egui::Align::Center)));
     bu.spacing_mut().item_spacing.x = 8.0;
-    if button(&mut bu, "Adicionar nota", Btn::Primary, 32.0).clicked() {
+    if button(&mut bu, &tr!("common.add_note"), Btn::Primary, 32.0).clicked() {
         app.add_note();
     }
-    let cr = button(&mut bu, "Colunas", Btn::Secondary, 32.0);
+    let cr = button(&mut bu, &tr!("browser.columns"), Btn::Secondary, 32.0);
     egui::Popup::menu(&cr).frame(popup_frame()).width(200.0).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
         for c in OPTIONAL {
             let mut on = app.browser.cols.contains(&c);
-            if checkbox(ui, &mut on, c.label()).clicked() {
+            if checkbox(ui, &mut on, &c.label()).clicked() {
                 if on {
                     app.browser.cols.push(c);
                     app.browser.cols.sort_by_key(|x| OPTIONAL.iter().position(|o| o == x));
@@ -306,7 +308,7 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
             .id(sid)
             .frame(egui::Frame::NONE)
             .layouter(&mut lay)
-            .hint_text(egui::RichText::new("deck:Farmacologia is:due prop:r<0.8 lapses>1 tag:prova \"texto\"").font(mono(12.5)).color(p.dim))
+            .hint_text(egui::RichText::new(tr!("browser.search_hint")).font(mono(12.5)).color(p.dim))
             .desired_width(sr.width() - 110.0),
     );
     kbd(su.painter(), pos2(sr.right() - 12.0, sr.center().y), Align2::RIGHT_CENTER, "Ctrl F");
@@ -326,18 +328,17 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
     let fr = Rect::from_min_size(pos2(inner.left(), sr.bottom() + 10.0), vec2(inner.width(), 24.0));
     let mut fu = ui.new_child(egui::UiBuilder::new().max_rect(fr).layout(egui::Layout::left_to_right(egui::Align::Center)));
     fu.spacing_mut().item_spacing.x = 6.0;
-    let leech_label = format!("Sanguessugas · {leeches}");
     for (label_s, term) in [
-        ("Vencidos hoje", "is:due"),
-        ("Esquecidos hoje", "rated:1:1"),
-        ("R < 80%", "prop:r<0.8"),
-        ("Novos", "is:new"),
-        ("Marcados", "is:flagged"),
-        (leech_label.as_str(), "is:leech"),
-        ("Suspensos", "is:suspended"),
+        (tr!("browser.f_due"), "is:due"),
+        (tr!("browser.f_forgot"), "rated:1:1"),
+        ("R < 80%".to_owned(), "prop:r<0.8"),
+        (tr!("browser.f_new"), "is:new"),
+        (tr!("browser.f_flagged"), "is:flagged"),
+        (tr!("browser.f_leeches", n = leeches), "is:leech"),
+        (tr!("browser.f_suspended"), "is:suspended"),
     ] {
         let on = app.browser.query.split_whitespace().any(|t| t == term);
-        if chip(&mut fu, label_s, on, 24.0).clicked() {
+        if chip(&mut fu, &label_s, on, 24.0).clicked() {
             if on {
                 app.browser.query = app.browser.query.split_whitespace().filter(|t| *t != term).collect::<Vec<_>>().join(" ");
             } else {
@@ -462,7 +463,7 @@ fn table_ui(app: &mut App, ui: &mut Ui, rect: Rect) {
     let mut bu = ui.new_child(egui::UiBuilder::new().max_rect(body));
     let n = app.browser.rows.len();
     if n == 0 {
-        text(bu.painter(), body.center() - vec2(0.0, 40.0), Align2::CENTER_CENTER, if app.browser.query.trim().is_empty() { "Nenhum cartão ainda. Adicione notas para começar." } else { "Nenhum cartão corresponde à busca." }, serif(14.0, W::Italic), p.muted, body.width());
+        text(bu.painter(), body.center() - vec2(0.0, 40.0), Align2::CENTER_CENTER, &tr!(if app.browser.query.trim().is_empty() { "browser.empty" } else { "browser.no_match" }), serif(14.0, W::Italic), p.muted, body.width());
         return;
     }
     let mut clicked: Option<(usize, Modifiers, bool)> = None;
@@ -559,34 +560,34 @@ fn selected_notes(app: &App) -> Vec<i64> {
 fn bulk_menu(app: &mut App, ui: &mut Ui) {
     let ids = app.browser.selected.clone();
     let n = ids.len();
-    if menu_item(ui, &format!("Estudar {} {}", n, if n == 1 { "cartão" } else { "cartões" }), false).clicked() {
-        review::start(app, review::Scope::Cards(ids.clone(), "Seleção do navegador".into()));
+    if menu_item(ui, &tr_n!("browser.study_n", n), false).clicked() {
+        review::start(app, review::Scope::Cards(ids.clone(), tr!("browser.selection_scope")));
     }
     menu_sep(ui);
-    if menu_item(ui, "Mover para baralho…", false).clicked() {
+    if menu_item(ui, &tr!("browser.move"), false).clicked() {
         let deck = app.browser.rows.iter().find(|r| r.card.id == ids[0]).map(|r| r.card.deck_id).unwrap_or(0);
         app.modal = Some(Modal::MoveCards { ids: ids.clone(), deck });
     }
-    if menu_item(ui, "Adicionar ou remover tags…", false).clicked() {
+    if menu_item(ui, &tr!("browser.tags"), false).clicked() {
         app.modal = Some(Modal::AddTags { note_ids: selected_notes(app), tags: String::new() });
     }
     let all_susp = app.browser.rows.iter().filter(|r| ids.contains(&r.card.id)).all(|r| r.card.queue == Queue::Suspended);
-    if menu_item(ui, if all_susp { "Reativar" } else { "Suspender" }, false).clicked() {
+    if menu_item(ui, &tr!(if all_susp { "browser.unsuspend" } else { "browser.suspend" }), false).clicked() {
         let _ = app.db.set_queue(&ids, if all_susp { Queue::Normal } else { Queue::Suspended });
         app.changed();
     }
     let all_flag = app.browser.rows.iter().filter(|r| ids.contains(&r.card.id)).all(|r| r.card.flagged);
-    if menu_item(ui, if all_flag { "Desmarcar" } else { "Marcar" }, false).clicked() {
+    if menu_item(ui, &tr!(if all_flag { "browser.unflag" } else { "browser.flag" }), false).clicked() {
         let _ = app.db.set_flag(&ids, !all_flag);
         app.changed();
     }
-    if menu_item(ui, "Redefinir como novos", false).clicked() {
+    if menu_item(ui, &tr!("browser.reset"), false).clicked() {
         let _ = app.db.reset_cards(&ids);
         app.changed();
-        app.toast("Cartões redefinidos (o histórico continua no registro)");
+        app.toast(tr!("toast.cards_reset"));
     }
     menu_sep(ui);
-    if menu_item(ui, "Excluir notas…", false).clicked() {
+    if menu_item(ui, &tr!("browser.delete_notes"), false).clicked() {
         app.modal = Some(Modal::DeleteNotes(selected_notes(app)));
     }
 }
@@ -596,20 +597,20 @@ fn side_panel(app: &mut App, ui: &mut Ui) {
     let sel = app.browser.selected.clone();
     if sel.is_empty() {
         ui.add_space(30.0);
-        para(ui, "Selecione um cartão para ver dificuldade, estabilidade, a curva de recuperabilidade e o histórico de revisões.", serif(13.0, W::Italic), p.muted);
+        para(ui, &tr!("browser.select_hint"), serif(13.0, W::Italic), p.muted);
         ui.add_space(10.0);
-        para(ui, "Ctrl+clique e Shift+clique selecionam vários; clique com o botão direito para ações em lote.", serif(12.0, W::Regular), p.dim);
+        para(ui, &tr!("browser.multi_hint"), serif(12.0, W::Regular), p.dim);
         return;
     }
     if sel.len() > 1 {
         ui.spacing_mut().item_spacing.y = 10.0;
-        caps_label(ui, "Seleção");
-        label(ui, &format!("{} cartões selecionados", sel.len()), serif(17.0, W::Semi), p.text);
+        caps_label(ui, &tr!("browser.selection"));
+        label(ui, &tr!("browser.n_selected", n = sel.len()), serif(17.0, W::Semi), p.text);
         let w = ui.available_width();
-        if button_sized(ui, "Estudar seleção", None, Btn::Primary, vec2(w, 34.0), true).clicked() {
-            review::start(app, review::Scope::Cards(sel.clone(), "Seleção do navegador".into()));
+        if button_sized(ui, &tr!("browser.study_selection"), None, Btn::Primary, vec2(w, 34.0), true).clicked() {
+            review::start(app, review::Scope::Cards(sel.clone(), tr!("browser.selection_scope")));
         }
-        let more = button_sized(ui, "Ações em lote ▾", None, Btn::Secondary, vec2(w, 34.0), true);
+        let more = button_sized(ui, &tr!("browser.bulk"), None, Btn::Secondary, vec2(w, 34.0), true);
         egui::Popup::menu(&more).frame(popup_frame()).width(w).show(|ui| bulk_menu(app, ui));
         return;
     }
@@ -628,7 +629,7 @@ pub fn card_details(app: &mut App, ui: &mut Ui, card: &Card, actions: bool) {
     ui.horizontal(|ui| {
         let (r, _) = ui.allocate_exact_size(vec2(w - 70.0, 20.0), Sense::hover());
         caps(ui.painter(), r.left_center(), Align2::LEFT_CENTER, &format!("{} · {deck}", note.kind.label()), p.dim);
-        if button(ui, "Editar", Btn::Ghost, 26.0).clicked() {
+        if button(ui, &tr!("browser.edit"), Btn::Ghost, 26.0).clicked() {
             app.note_editor = Some(super::note_editor::NoteEditor::edit(note.clone(), card.deck_id));
             app.modal = None;
         }
@@ -636,7 +637,7 @@ pub fn card_details(app: &mut App, ui: &mut Ui, card: &Card, actions: bool) {
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 6.0;
         let q = rich::plain(&face.question);
-        para(ui, if q.trim().is_empty() { note.kind.label() } else { &q }, serif(15.0, W::Medium), p.text);
+        para(ui, &if q.trim().is_empty() { note.kind.label() } else { q.clone() }, serif(15.0, W::Medium), p.text);
         let a = face.cloze_back.as_deref().map(rich::plain).unwrap_or_else(|| rich::plain(&face.answer));
         if !a.trim().is_empty() {
             para(ui, &a, serif(13.5, W::Regular), p.muted);
@@ -649,16 +650,16 @@ pub fn card_details(app: &mut App, ui: &mut Ui, card: &Card, actions: bool) {
     let (row, _) = ui.allocate_exact_size(vec2(w, 52.0), Sense::hover());
     let bw = (w - 16.0) / 3.0;
     for (i, (lab, val, col)) in [
-        ("Dificuldade", card.s.difficulty.map(|d| srs::decimal(d as f64, 1)).unwrap_or_else(|| "—".into()), p.text),
-        ("Estabilidade", card.s.stability.map(|s| srs::days_label(s as f64)).unwrap_or_else(|| "—".into()), p.text),
-        ("R agora", r_now.map(|r| pct(r, 0)).unwrap_or_else(|| "—".into()), r_now.map(r_color).unwrap_or(p.text)),
+        (tr!("browser.difficulty"), card.s.difficulty.map(|d| srs::decimal(d as f64, 1)).unwrap_or_else(|| "—".into()), p.text),
+        (tr!("browser.stability"), card.s.stability.map(|s| srs::days_label(s as f64)).unwrap_or_else(|| "—".into()), p.text),
+        (tr!("browser.r_now"), r_now.map(|r| pct(r, 0)).unwrap_or_else(|| "—".into()), r_now.map(r_color).unwrap_or(p.text)),
     ]
     .into_iter()
     .enumerate()
     {
         let r = Rect::from_min_size(pos2(row.left() + i as f32 * (bw + 8.0), row.top()), vec2(bw, 52.0));
         ui.painter().rect(r, CornerRadius::same(8), p.window, Stroke::new(1.0, p.border), StrokeKind::Inside);
-        caps_sized(ui.painter(), pos2(r.left() + 10.0, r.top() + 15.0), Align2::LEFT_CENTER, lab, 9.5, p.dim);
+        caps_sized(ui.painter(), pos2(r.left() + 10.0, r.top() + 15.0), Align2::LEFT_CENTER, &lab, 9.5, p.dim);
         text(ui.painter(), pos2(r.left() + 10.0, r.top() + 35.0), Align2::LEFT_CENTER, &val, serif(17.0, W::Semi), col, bw - 14.0);
     }
     // Curva de R.
@@ -667,28 +668,29 @@ pub fn card_details(app: &mut App, ui: &mut Ui, card: &Card, actions: bool) {
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 6.0;
         let (r, _) = ui.allocate_exact_size(vec2(w, 16.0), Sense::hover());
-        text(ui.painter(), r.left_center(), Align2::LEFT_CENTER, "Recuperabilidade prevista", serif(12.0, W::Regular), p.muted, w * 0.7);
-        text(ui.painter(), r.right_center(), Align2::RIGHT_CENTER, &format!("meta {}", pct(desired, 0)), serif(12.0, W::Regular), p.muted, w * 0.3);
+        text(ui.painter(), r.left_center(), Align2::LEFT_CENTER, &tr!("browser.predicted_r"), serif(12.0, W::Regular), p.muted, w * 0.7);
+        text(ui.painter(), r.right_center(), Align2::RIGHT_CENTER, &tr!("browser.target", pct = pct(desired, 0)), serif(12.0, W::Regular), p.muted, w * 0.3);
         let (chart, _) = ui.allocate_exact_size(vec2(w, 92.0), Sense::hover());
         r_curve(ui, chart, card, &hist, decay, desired);
     });
     // Histórico.
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
-        caps_label(ui, "Histórico");
+        caps_label(ui, &tr!("browser.history"));
         ui.add_space(6.0);
         if hist.is_empty() {
-            label(ui, "Ainda não revisado.", serif(12.5, W::Italic), p.muted);
+            label(ui, &tr!("browser.not_reviewed"), serif(12.5, W::Italic), p.muted);
         }
         for h in hist.iter().rev().take(12) {
             let (r, _) = ui.allocate_exact_size(vec2(w, 30.0), Sense::hover());
             ui.painter().hline(r.x_range(), r.bottom() - 0.5, Stroke::new(1.0, p.line_row));
             let (lab, col) = match h.rating {
-                1 => ("Errei", p.again),
-                2 => ("Difícil", p.hard),
-                3 => ("Bom", p.good),
-                _ => ("Fácil", p.easy),
+                1 => (tr!("rating.again"), p.again),
+                2 => (tr!("rating.hard"), p.hard),
+                3 => (tr!("rating.good"), p.good),
+                _ => (tr!("rating.easy"), p.easy),
             };
+            let lab = lab.as_str();
             text(ui.painter(), pos2(r.left(), r.center().y), Align2::LEFT_CENTER, &short_date(h.at), serif(12.5, W::Regular), p.muted, 66.0);
             text(ui.painter(), pos2(r.left() + 72.0, r.center().y), Align2::LEFT_CENTER, lab, serif(12.5, W::Semi), col, 70.0);
             text(ui.painter(), pos2(r.left() + 146.0, r.center().y), Align2::LEFT_CENTER, &srs::interval_label(h.next_due - h.at), serif(12.5, W::Regular), p.text2, 80.0);
@@ -701,14 +703,14 @@ pub fn card_details(app: &mut App, ui: &mut Ui, card: &Card, actions: bool) {
         ui.spacing_mut().item_spacing.y = 4.0;
         let due = if card.s.state == State::New { "—".into() } else { format!("{} ({})", short_date(card.s.due), due_label(app, card)) };
         for (k, v) in [
-            ("Criado", short_date(card.created_at)),
-            ("Vence", due),
-            ("Revisões", format!("{} · {} lapsos", card.s.reps, card.s.lapses)),
-            ("Tempo total", format!("{} s", hist.iter().map(|h| h.duration_ms).sum::<i64>() / 1000)),
-            ("Tags", if note.tags.is_empty() { "—".into() } else { note.tags.clone() }),
+            (tr!("browser.added"), short_date(card.created_at)),
+            (tr!("browser.due"), due),
+            (tr!("browser.reviews"), tr_n!("browser.reviews_value", card.s.lapses, reps = card.s.reps)),
+            (tr!("browser.total_time"), format!("{} s", hist.iter().map(|h| h.duration_ms).sum::<i64>() / 1000)),
+            (tr!("browser.tags_label"), if note.tags.is_empty() { "—".into() } else { note.tags.clone() }),
         ] {
             let (r, _) = ui.allocate_exact_size(vec2(w, 18.0), Sense::hover());
-            text(ui.painter(), r.left_center(), Align2::LEFT_CENTER, k, serif(12.0, W::Regular), p.muted, 90.0);
+            text(ui.painter(), r.left_center(), Align2::LEFT_CENTER, &k, serif(12.0, W::Regular), p.muted, 90.0);
             text(ui.painter(), pos2(r.left() + 96.0, r.center().y), Align2::LEFT_CENTER, &v, serif(12.0, W::Regular), p.text2, w - 96.0);
         }
     });
@@ -717,15 +719,15 @@ pub fn card_details(app: &mut App, ui: &mut Ui, card: &Card, actions: bool) {
             ui.spacing_mut().item_spacing.x = 6.0;
             let bw = (w - 12.0) / 3.0;
             let susp = card.queue == Queue::Suspended;
-            if button_sized(ui, if susp { "Reativar" } else { "Suspender" }, None, Btn::Secondary, vec2(bw, 30.0), true).clicked() {
+            if button_sized(ui, &tr!(if susp { "browser.unsuspend" } else { "browser.suspend" }), None, Btn::Secondary, vec2(bw, 30.0), true).clicked() {
                 let _ = app.db.set_queue(&[card.id], if susp { Queue::Normal } else { Queue::Suspended });
                 app.changed();
             }
-            if button_sized(ui, "Redefinir", None, Btn::Secondary, vec2(bw, 30.0), true).clicked() {
+            if button_sized(ui, &tr!("browser.reset_one"), None, Btn::Secondary, vec2(bw, 30.0), true).clicked() {
                 let _ = app.db.reset_cards(&[card.id]);
                 app.changed();
             }
-            if button_sized(ui, "Ver origem", None, Btn::Secondary, vec2(bw, 30.0), note.source_page.is_some()).clicked() {
+            if button_sized(ui, &tr!("browser.view_source"), None, Btn::Secondary, vec2(bw, 30.0), note.source_page.is_some()).clicked() {
                 if let Some(pid) = note.source_page {
                     app.open_page(pid);
                 }
@@ -741,7 +743,7 @@ fn r_curve(ui: &Ui, rect: Rect, card: &Card, hist: &[crate::db::Rev], decay: f32
     let painter = ui.painter();
     painter.hline(rect.x_range(), rect.bottom() - 1.0, Stroke::new(1.0, p.border));
     if hist.is_empty() || card.s.stability.is_none() {
-        text(painter, rect.center(), Align2::CENTER_CENTER, "Sem revisões ainda", serif(12.0, W::Italic), p.dim, rect.width());
+        text(painter, rect.center(), Align2::CENTER_CENTER, &tr!("browser.no_reviews"), serif(12.0, W::Italic), p.dim, rect.width());
         return;
     }
     let now = srs::now_ms();
@@ -793,6 +795,6 @@ fn r_curve(ui: &Ui, rect: Rect, card: &Card, hist: &[crate::db::Rev], decay: f32
     let xn = x_of(now);
     if xn < rect.right() - 20.0 {
         super::charts::dashed_v(painter, xn, rect.top(), rect.bottom(), p.border_strong);
-        text(painter, pos2(xn + 4.0, rect.top() + 6.0), Align2::LEFT_CENTER, "hoje", serif(10.0, W::Regular), p.muted, 40.0);
+        text(painter, pos2(xn + 4.0, rect.top() + 6.0), Align2::LEFT_CENTER, &tr!("browser.today"), serif(10.0, W::Regular), p.muted, 40.0);
     }
 }

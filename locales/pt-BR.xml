@@ -1,0 +1,771 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Discite — Português (Brasil)
+
+  Veja as instruções para criar uma tradução no começo de en.xml.
+-->
+<language code="pt-BR" name="Português (Brasil)">
+
+  <!-- Number formats -->
+  <string key="format.decimal">,</string>
+  <string key="format.thousands">.</string>
+
+  <!-- Dates and times -->
+  <string key="date.long">{weekday}, {day} de {month}</string>
+  <string key="date.short">{day} {month}</string>
+
+  <!-- Months -->
+  <string key="month.jan">janeiro</string>
+  <string key="month.feb">fevereiro</string>
+  <string key="month.mar">março</string>
+  <string key="month.apr">abril</string>
+  <string key="month.may">maio</string>
+  <string key="month.jun">junho</string>
+  <string key="month.jul">julho</string>
+  <string key="month.aug">agosto</string>
+  <string key="month.sep">setembro</string>
+  <string key="month.oct">outubro</string>
+  <string key="month.nov">novembro</string>
+  <string key="month.dec">dezembro</string>
+
+  <!-- Months (short) -->
+  <string key="month_short.jan">jan</string>
+  <string key="month_short.feb">fev</string>
+  <string key="month_short.mar">mar</string>
+  <string key="month_short.apr">abr</string>
+  <string key="month_short.may">mai</string>
+  <string key="month_short.jun">jun</string>
+  <string key="month_short.jul">jul</string>
+  <string key="month_short.aug">ago</string>
+  <string key="month_short.sep">set</string>
+  <string key="month_short.oct">out</string>
+  <string key="month_short.nov">nov</string>
+  <string key="month_short.dec">dez</string>
+
+  <!-- Weekdays -->
+  <string key="weekday.mon">Segunda-feira</string>
+  <string key="weekday.tue">Terça-feira</string>
+  <string key="weekday.wed">Quarta-feira</string>
+  <string key="weekday.thu">Quinta-feira</string>
+  <string key="weekday.fri">Sexta-feira</string>
+  <string key="weekday.sat">Sábado</string>
+  <string key="weekday.sun">Domingo</string>
+
+  <!-- Weekdays (short) -->
+  <string key="weekday_short.mon">seg</string>
+  <string key="weekday_short.tue">ter</string>
+  <string key="weekday_short.wed">qua</string>
+  <string key="weekday_short.thu">qui</string>
+  <string key="weekday_short.fri">sex</string>
+  <string key="weekday_short.sat">sáb</string>
+  <string key="weekday_short.sun">dom</string>
+
+  <!-- Relative times and durations -->
+  <string key="time.under_minute">&lt; 1 min</string>
+  <string key="time.minutes">{n} min</string>
+  <string key="time.hours">{n} h</string>
+  <string key="time.days">{n} d</string>
+  <string key="time.month">{n} mês</string>
+  <string key="time.months">{n} meses</string>
+  <string key="time.year">{n} ano</string>
+  <string key="time.years">{n} anos</string>
+  <string key="time.now">agora</string>
+  <string key="time.minutes_ago">há {n} min</string>
+  <string key="time.hours_ago">há {n} h</string>
+  <string key="time.yesterday">ontem</string>
+  <string key="time.days_ago">há {n} dias</string>
+  <plural key="time.months_ago"><one>há {n} mês</one><other>há {n} meses</other></plural>
+
+  <!-- App and window -->
+  <string key="app.good_morning">Bom dia</string>
+  <string key="app.good_afternoon">Boa tarde</string>
+  <string key="app.good_evening">Boa noite</string>
+  <string key="app.theme_dark">◐  Tema escuro</string>
+  <string key="app.theme_light">◑  Tema claro</string>
+  <string key="app.toggle_theme">Alternar tema claro/escuro</string>
+  <string key="app.language">Idioma</string>
+  <string key="app.language_auto">Automático (sistema)</string>
+  <string key="app.minimize">Minimizar</string>
+  <string key="app.maximize">Maximizar</string>
+  <string key="app.close">Fechar</string>
+  <string key="app.tagline">Aprendei · v{version}</string>
+  <string key="app.close_dialog">Fechar</string>
+
+  <!-- Sidebar and navigation -->
+  <string key="nav.dashboard">Painel</string>
+  <string key="nav.stats">Estatísticas</string>
+  <string key="nav.cards">Cartões</string>
+  <string key="nav.subjects">Disciplinas</string>
+  <string key="nav.today">Hoje</string>
+  <string key="nav.subject_due">{name}, {n} para hoje</string>
+  <string key="nav.notebook">Caderno</string>
+  <string key="nav.decks">Baralhos</string>
+  <string key="nav.subject">Disciplina</string>
+  <string key="nav.new_subject">Nova disciplina</string>
+  <string key="nav.resume_review">Retomar revisão · {n}</string>
+  <string key="nav.streak_none">Comece uma sequência hoje</string>
+  <plural key="nav.streak"><one>Sequência de {n} dia</one><other>Sequência de {n} dias</other></plural>
+  <string key="nav.backup_ago">Backup automático {when}</string>
+  <string key="nav.no_backup">Sem backup ainda</string>
+  <string key="nav.open_notebook">Abrir caderno</string>
+  <string key="nav.study">Estudar</string>
+  <string key="nav.rename_subject">Renomear ou mudar cor…</string>
+  <string key="nav.delete_subject">Excluir disciplina…</string>
+  <string key="nav.expand_sidebar">Expandir barra lateral (Ctrl \)</string>
+
+  <!-- Common words and buttons -->
+  <string key="common.move_up">Mover para cima</string>
+  <string key="common.move_down">Mover para baixo</string>
+  <string key="common.settings">Configurações</string>
+  <string key="common.key_space">Espaço</string>
+  <string key="common.add_note">Adicionar nota</string>
+  <string key="common.rename">Renomear…</string>
+  <string key="common.save">Salvar</string>
+  <string key="common.add">Adicionar</string>
+  <string key="common.cancel">Cancelar</string>
+  <string key="common.create">Criar</string>
+  <string key="common.delete">Excluir</string>
+  <string key="common.close">Fechar</string>
+
+  <!-- Dashboard -->
+  <string key="dash.subtitle">{date} · o dia de estudo vira às {hour}:00</string>
+  <string key="dash.search">Buscar ou executar…</string>
+  <string key="dash.open_palette">Abrir paleta de comandos</string>
+  <string key="dash.today">Hoje</string>
+  <plural key="dash.cards_to_study"><one>cartão para estudar,</one><other>cartões para estudar,</other></plural>
+  <string key="dash.about_minutes">cerca de {n} min</string>
+  <string key="dash.review">revisão</string>
+  <string key="dash.new">novos</string>
+  <string key="dash.learning">aprendendo</string>
+  <string key="dash.study_all">Estudar tudo</string>
+  <string key="dash.custom_session">Sessão personalizada</string>
+  <string key="dash.avg_time">Média de {n} s por cartão (30 dias)</string>
+  <string key="dash.due_new">vencidos · {n} novos</string>
+  <string key="dash.plus_new">+ {n} novos</string>
+  <string key="dash.no_cards">Sem cartões ainda</string>
+  <string key="dash.all_done">Tudo em dia</string>
+  <string key="dash.tomorrow">{n} amanhã</string>
+  <string key="dash.retention">retenção {pct}</string>
+  <string key="dash.retention_none">retenção —</string>
+  <plural key="dash.card_count"><one>{count} cartão</one><other>{count} cartões</other></plural>
+  <string key="dash.welcome">Bem-vindo</string>
+  <string key="dash.welcome_title">Discite, </string>
+  <string key="dash.welcome_title_em">aprendei.</string>
+  <string key="dash.welcome_text">Organize seus estudos por disciplina: escreva anotações no caderno e transforme o que importa em flashcards, revisados no momento certo pelo FSRS.</string>
+  <string key="dash.create_first_subject">Criar a primeira disciplina</string>
+  <string key="dash.load_sample">Carregar exemplo</string>
+  <string key="dash.year_reviews">Revisões no último ano</string>
+  <string key="dash.year_summary">{reviews} revisões · {days} dias estudados</string>
+  <string key="dash.more">mais</string>
+  <string key="dash.less">menos</string>
+  <string key="dash.recent_pages">Páginas recentes</string>
+  <string key="dash.no_pages">Nenhuma página ainda.</string>
+  <string key="dash.next_7_days">Próximos 7 dias</string>
+  <string key="dash.avg_per_day">média {n}/dia</string>
+  <string key="dash.today_short">hoje</string>
+
+  <!-- Subject (decks tab) -->
+  <string key="subject.preset_info"> · preset {name} ({algorithm}, retenção {pct}%)</string>
+  <plural key="subject.summary"><one>{n} baralho · {cards} cartões{preset}</one><other>{n} baralhos · {cards} cartões{preset}</other></plural>
+  <string key="subject.study">Estudar {name}</string>
+  <string key="subject.retention_30">Retenção · 30 dias</string>
+  <string key="subject.above_goal">{n} pontos acima da meta</string>
+  <string key="subject.below_goal">{n} pontos abaixo da meta</string>
+  <string key="subject.desired">Desejada {pct}% · revisões maduras (≥ 21 d)</string>
+  <string key="subject.cards_minutes">cartões · cerca de {n} min</string>
+  <string key="subject.today_breakdown">{review} revisão · {new} novos · {learn} aprendendo</string>
+  <string key="subject.load_7">Carga prevista · 7 dias</string>
+  <string key="subject.nothing_scheduled">Nada agendado</string>
+
+  <!-- Decks -->
+  <string key="deck.deck">Baralho</string>
+  <string key="deck.new">Novos</string>
+  <string key="deck.learning">Aprendendo</string>
+  <string key="deck.review">Revisão</string>
+  <string key="deck.none">  Nenhum baralho.</string>
+  <string key="deck.add">+ Baralho</string>
+  <string key="deck.import_csv">Importar CSV</string>
+  <string key="deck.bury_note">Cartões da mesma nota não aparecem no mesmo dia.</string>
+  <string key="deck.options">Opções do baralho</string>
+  <string key="deck.custom_study">Estudo personalizado…</string>
+  <string key="deck.add_note_here">Adicionar nota aqui</string>
+  <string key="deck.view_cards">Ver cartões</string>
+  <string key="deck.new_subdeck">Novo sub-baralho…</string>
+  <string key="deck.preset_options">Opções do preset…</string>
+  <string key="deck.use_preset">Usar preset</string>
+  <string key="deck.delete">Excluir baralho…</string>
+
+  <!-- Notebook -->
+  <string key="page.untitled">Sem título</string>
+  <string key="page.empty_title">Caderno vazio</string>
+  <string key="page.empty_text">Escreva anotações em páginas e subpáginas. Imagens podem ser coladas direto (Ctrl+V).</string>
+  <string key="page.new_page">Nova página</string>
+  <string key="page.notebook">Caderno</string>
+  <string key="page.more_options">Mais opções do caderno</string>
+  <string key="page.import_markdown">Importar Markdown…</string>
+  <string key="page.new_page_hint">Nova página (Ctrl N)</string>
+  <plural key="page.count"><one>{n} página</one><other>{n} páginas</other></plural>
+  <string key="page.new_subpage">Nova subpágina</string>
+  <string key="page.indent">Tornar subpágina da anterior</string>
+  <string key="page.outdent">Subir um nível</string>
+  <string key="page.move_to_subject">Mover para disciplina</string>
+  <string key="page.delete">Excluir página…</string>
+  <string key="page.breadcrumb">{subject}  ›  Caderno  ›  </string>
+  <string key="page.export">Exportar</string>
+  <string key="page.history">Histórico</string>
+  <string key="page.focus">Foco</string>
+  <string key="page.exit_focus">Sair do foco</string>
+  <string key="page.editing">editando…</string>
+  <string key="page.saved">salvo</string>
+  <string key="page.remove_tag">Remover tag</string>
+  <string key="page.new_tag">nova-tag</string>
+  <string key="page.add_tag">+ tag</string>
+  <string key="page.edited">editado {when}</string>
+  <string key="page.bold">Negrito (Ctrl B)</string>
+  <string key="page.italic">Itálico (Ctrl I)</string>
+  <string key="page.underline">Sublinhado (Ctrl U)</string>
+  <string key="page.strike">Tachado</string>
+  <string key="page.inline_code">Código inline (Ctrl E)</string>
+  <string key="page.highlight">Realce (Ctrl Shift H)</string>
+  <string key="page.link">Link para página</string>
+  <string key="page.image">Imagem</string>
+  <string key="page.table">Tabela</string>
+  <string key="page.formula">∑ Fórmula</string>
+  <string key="page.insert">Inserir</string>
+  <string key="page.more">Mais</string>
+  <string key="page.create_flashcard">Criar flashcard</string>
+  <string key="page.code">Código</string>
+  <string key="page.formula_label">∑ Fórmula · LaTeX</string>
+  <string key="page.tip">Dica</string>
+  <string key="page.slash_hint">Digite '/' para comandos</string>
+  <string key="page.blocks">Blocos</string>
+  <string key="page.insert_below">Inserir bloco abaixo</string>
+  <string key="page.drag_or_menu">Arrastar ou abrir menu do bloco</string>
+  <string key="page.turn_into">Transformar em</string>
+  <string key="page.flashcard_from_block">Criar flashcard deste bloco</string>
+  <string key="page.duplicate">Duplicar</string>
+  <string key="page.delete_block">Excluir bloco</string>
+  <string key="page.image_pick">Clique para escolher uma imagem, cole (Ctrl+V) ou arraste um arquivo</string>
+  <string key="page.image_missing">Imagem não encontrada na pasta de mídia</string>
+  <string key="page.image_broken">Não foi possível abrir esta imagem</string>
+  <string key="page.choose_image">Escolher imagem…</string>
+  <string key="page.remove">Remover</string>
+  <string key="page.size_s">P</string>
+  <string key="page.size_m">M</string>
+  <string key="page.size_l">G</string>
+  <string key="page.remove_image">Remover imagem</string>
+  <string key="page.caption">Legenda</string>
+  <string key="page.add_row">+ linha</string>
+  <string key="page.add_col">+ coluna</string>
+  <string key="page.del_row">− linha</string>
+  <string key="page.del_col">− coluna</string>
+  <string key="page.outline">Sumário</string>
+  <string key="page.backlinks">Backlinks · {n}</string>
+  <string key="page.no_backlinks">Nenhuma página aponta para esta.</string>
+  <string key="page.linked_cards">Cartões vinculados · {n}</string>
+  <string key="page.linked_hint">Selecione um trecho e use Criar flashcard.</string>
+  <string key="page.review_r">revisão · R {pct}</string>
+  <string key="page.due_now">agora</string>
+  <string key="page.due_in">em {interval}</string>
+  <plural key="page.study_these"><one>Estudar este {n}</one><other>Estudar estes {n}</other></plural>
+  <string key="page.cards_of">Cartões de “{title}”</string>
+  <string key="page.md_tip">Dica:</string>
+  <string key="page.md_images_suffix">_imagens</string>
+  <string key="page.imported_title">Importada</string>
+
+  <!-- Block types -->
+  <string key="block.paragraph">Parágrafo</string>
+  <string key="block.h1">Título 1</string>
+  <string key="block.h2">Título 2</string>
+  <string key="block.h3">Título 3</string>
+  <string key="block.bullet">Lista com marcadores</string>
+  <string key="block.numbered">Lista numerada</string>
+  <string key="block.check">Checklist</string>
+  <string key="block.quote">Citação</string>
+  <string key="block.code">Bloco de código</string>
+  <string key="block.callout">Destaque (dica)</string>
+  <string key="block.image">Imagem</string>
+  <string key="block.table">Tabela</string>
+  <string key="block.divider">Divisor</string>
+  <string key="block.formula">Fórmula (LaTeX)</string>
+
+  <!-- Review session -->
+  <string key="review.all_subjects">Todas as disciplinas</string>
+  <string key="review.leech_tag">sanguessuga</string>
+  <string key="review.exit">← Sair</string>
+  <string key="review.origin">Origem</string>
+  <string key="review.info">Info</string>
+  <string key="review.edit">Editar</string>
+  <string key="review.flagged">★ marcado</string>
+  <string key="review.predicted_r">R prevista {pct}</string>
+  <plural key="review.lapses"><one>{n} lapso</one><other>{n} lapsos</other></plural>
+  <string key="review.first_time">primeira vez</string>
+  <string key="review.nth_review">{n}ª revisão</string>
+  <string key="review.show_answer">Mostrar resposta</string>
+  <string key="review.try_recall">Tente lembrar antes de virar o cartão.</string>
+  <string key="review.rating_next">{rating}, próximo em {interval}</string>
+  <string key="review.hint_undo">desfazer</string>
+  <string key="review.hint_suspend">suspender</string>
+  <string key="review.hint_bury">enterrar</string>
+  <string key="review.hint_flag">marcar</string>
+  <string key="review.type_answer">Digite a resposta e tecle Enter</string>
+  <string key="review.nothing_typed">(nada digitado)</string>
+  <string key="review.break">Intervalo</string>
+  <string key="review.learning_returns">O próximo cartão em aprendizado volta em {n} min.</string>
+  <string key="review.break_tip">Os passos curtos fixam a memória recente. Aproveite para revisar suas anotações.</string>
+  <string key="review.show_now">Mostrar agora</string>
+  <string key="review.end">Encerrar</string>
+  <string key="review.done_title">Sessão concluída</string>
+  <string key="review.done_good">Bom trabalho. Tudo o que vencia hoje foi revisado.</string>
+  <string key="review.done_empty">Nada mais para estudar agora.</string>
+  <string key="review.stat_cards">cartões</string>
+  <string key="review.stat_correct">acerto</string>
+  <string key="review.stat_studying">estudando</string>
+  <string key="review.stat_tomorrow">amanhã</string>
+  <string key="review.back">Voltar</string>
+  <string key="review.custom_study">Estudo personalizado</string>
+
+  <!-- Answer buttons -->
+  <string key="rating.again">Errei</string>
+  <string key="rating.hard">Difícil</string>
+  <string key="rating.good">Bom</string>
+  <string key="rating.easy">Fácil</string>
+
+  <!-- Card states -->
+  <string key="state.new">novo</string>
+  <string key="state.learning">aprendendo</string>
+  <string key="state.review">revisão</string>
+  <string key="state.relearning">reaprendendo</string>
+
+  <!-- Note editor -->
+  <string key="note.need_cloze">Crie ao menos uma lacuna: selecione um trecho e use Nova lacuna (Ctrl+Shift+C).</string>
+  <string key="note.need_image">Escolha ou cole uma imagem.</string>
+  <string key="note.need_mask">Desenhe ao menos uma máscara arrastando sobre a imagem.</string>
+  <string key="note.front_empty">A frente está vazia.</string>
+  <string key="note.edit_title">Editar nota</string>
+  <string key="note.add_title">Adicionar nota</string>
+  <string key="note.source">origem</string>
+  <string key="note.keep">Manter baralho e tags na próxima nota</string>
+  <string key="note.delete">Excluir nota</string>
+  <string key="note.note_type">Tipo de nota</string>
+  <plural key="note.gaps"><one>{n} lacuna · gera {n} cartão</one><other>{n} lacunas · gera {n} cartões</other></plural>
+  <string key="note.tags">Tags</string>
+  <string key="note.remove_tag">Remover tag</string>
+  <string key="note.add_tag">adicionar…</string>
+  <string key="note.duplicate">Duplicata?</string>
+  <string key="note.similar">Parecida com “{front}” ({kind}).</string>
+  <string key="note.view_note">Ver nota</string>
+  <string key="note.bold">Negrito (Ctrl B)</string>
+  <string key="note.italic">Itálico (Ctrl I)</string>
+  <string key="note.underline">Sublinhado (Ctrl U)</string>
+  <string key="note.image">Imagem</string>
+  <string key="note.images_filter">Imagens</string>
+  <string key="note.new_gap">Nova lacuna</string>
+  <plural key="note.masks"><one>{n} máscara · gera {n} cartão</one><other>{n} máscaras · gera {n} cartões</other></plural>
+  <string key="note.choose_image">Escolher imagem…</string>
+  <string key="note.change_image">Trocar imagem…</string>
+  <string key="note.paste_or_drag">ou cole (Ctrl+V) / arraste uma imagem</string>
+  <string key="note.delete_mask">Apagar máscara</string>
+  <string key="note.no_image">[ nenhuma imagem ]</string>
+  <string key="note.preview">Pré-visualização</string>
+  <string key="note.card_n">Cartão {n}</string>
+  <string key="note.front">Frente</string>
+  <string key="note.back">Verso</string>
+  <string key="note.type_placeholder">digite a resposta…</string>
+  <string key="note.tip_cloze">Uma lacuna por cartão mantém cada cartão atômico (princípio da informação mínima).</string>
+  <string key="note.tip_reversed">Gera dois cartões: frente → verso e verso → frente.</string>
+  <string key="note.tip_type_in">Digitar a resposta força a recuperação exata (útil para termos e grafias).</string>
+  <string key="note.tip_occlusion">Arraste sobre a imagem para criar máscaras: cada uma vira um cartão.</string>
+  <string key="note.tip_basic">Perguntas curtas e específicas são lembradas com mais consistência.</string>
+
+  <!-- Note types -->
+  <string key="kind.basic">Básico</string>
+  <string key="kind.basic_reversed">Básico + invertido</string>
+  <string key="kind.cloze">Cloze</string>
+  <string key="kind.type_in">Digitar resposta</string>
+  <string key="kind.occlusion">Oclusão de imagem</string>
+
+  <!-- Note fields -->
+  <string key="field.front">Frente</string>
+  <string key="field.back">Verso</string>
+  <string key="field.extra">Extra</string>
+  <string key="field.text">Texto</string>
+  <string key="field.image">Imagem</string>
+  <string key="field.masks">Máscaras</string>
+  <string key="field.header">Cabeçalho</string>
+
+  <!-- Card browser -->
+  <string key="browser.col_front">Frente</string>
+  <string key="browser.col_deck">Baralho</string>
+  <string key="browser.col_due">Vence</string>
+  <string key="browser.col_ivl">Int.</string>
+  <string key="browser.col_reps">Rev.</string>
+  <string key="browser.col_kind">Tipo</string>
+  <string key="browser.col_added">Criado</string>
+  <string key="browser.due_new">novo</string>
+  <string key="browser.due_suspended">suspenso</string>
+  <string key="browser.due_today">hoje</string>
+  <string key="browser.due_tomorrow">amanhã</string>
+  <string key="browser.due_in_days">em {n} d</string>
+  <string key="browser.ivl_days">{n} d</string>
+  <string key="browser.ivl_months">{n} m</string>
+  <string key="browser.ivl_years">{n} a</string>
+  <string key="browser.title">Cartões</string>
+  <string key="browser.count">{shown} de {total} cartões{selected}</string>
+  <string key="browser.selected_suffix"> · {n} selecionados</string>
+  <string key="browser.columns">Colunas</string>
+  <string key="browser.search_hint">deck:Farmacologia is:due prop:r&lt;0.8 lapses&gt;1 tag:prova "texto"</string>
+  <string key="browser.f_due">Vencidos hoje</string>
+  <string key="browser.f_forgot">Esquecidos hoje</string>
+  <string key="browser.f_new">Novos</string>
+  <string key="browser.f_flagged">Marcados</string>
+  <string key="browser.f_leeches">Sanguessugas · {n}</string>
+  <string key="browser.f_suspended">Suspensos</string>
+  <string key="browser.empty">Nenhum cartão ainda. Adicione notas para começar.</string>
+  <string key="browser.no_match">Nenhum cartão corresponde à busca.</string>
+  <plural key="browser.study_n"><one>Estudar {n} cartão</one><other>Estudar {n} cartões</other></plural>
+  <string key="browser.selection_scope">Seleção do navegador</string>
+  <string key="browser.move">Mover para baralho…</string>
+  <string key="browser.tags">Adicionar ou remover tags…</string>
+  <string key="browser.unsuspend">Reativar</string>
+  <string key="browser.suspend">Suspender</string>
+  <string key="browser.unflag">Desmarcar</string>
+  <string key="browser.flag">Marcar</string>
+  <string key="browser.reset">Redefinir como novos</string>
+  <string key="browser.delete_notes">Excluir notas…</string>
+  <string key="browser.select_hint">Selecione um cartão para ver dificuldade, estabilidade, a curva de recuperabilidade e o histórico de revisões.</string>
+  <string key="browser.multi_hint">Ctrl+clique e Shift+clique selecionam vários; clique com o botão direito para ações em lote.</string>
+  <string key="browser.selection">Seleção</string>
+  <string key="browser.n_selected">{n} cartões selecionados</string>
+  <string key="browser.study_selection">Estudar seleção</string>
+  <string key="browser.bulk">Ações em lote ▾</string>
+  <string key="browser.edit">Editar</string>
+  <string key="browser.difficulty">Dificuldade</string>
+  <string key="browser.stability">Estabilidade</string>
+  <string key="browser.r_now">R agora</string>
+  <string key="browser.predicted_r">Recuperabilidade prevista</string>
+  <string key="browser.target">meta {pct}</string>
+  <string key="browser.history">Histórico</string>
+  <string key="browser.not_reviewed">Ainda não revisado.</string>
+  <string key="browser.added">Criado</string>
+  <string key="browser.due">Vence</string>
+  <string key="browser.reviews">Revisões</string>
+  <plural key="browser.reviews_value"><one>{reps} · {n} lapso</one><other>{reps} · {n} lapsos</other></plural>
+  <string key="browser.total_time">Tempo total</string>
+  <string key="browser.tags_label">Tags</string>
+  <string key="browser.reset_one">Redefinir</string>
+  <string key="browser.view_source">Ver origem</string>
+  <string key="browser.no_reviews">Sem revisões ainda</string>
+  <string key="browser.today">hoje</string>
+
+  <!-- Search errors -->
+  <string key="search.no_deck">Baralho não encontrado: {name}</string>
+  <string key="search.no_subject">Disciplina não encontrada: {name}</string>
+  <string key="search.unknown">Termo desconhecido: {term}</string>
+  <string key="search.bad_compare">Comparação inválida em {term}</string>
+
+  <!-- Preset options -->
+  <string key="preset.default_name">Padrão</string>
+  <string key="preset.not_enough_reviews">Ainda não há revisões suficientes neste preset.</string>
+  <string key="preset.eval_failed">Não foi possível avaliar</string>
+  <string key="preset.not_enough_data">Dados insuficientes: continue estudando (algumas centenas de revisões ajudam).</string>
+  <string key="preset.optimize_failed">Falha na otimização: {error}</string>
+  <string key="preset.sim_failed">A simulação falhou</string>
+  <plural key="preset.shared_by"><one>Compartilhado por {n} baralho{subjects}</one><other>Compartilhado por {n} baralhos{subjects}</other></plural>
+  <string key="preset.of_subjects"> de {list}</string>
+  <string key="preset.list_and">{rest} e {last}</string>
+  <string key="preset.title">Opções do preset</string>
+  <string key="preset.restore_defaults">Restaurar padrão</string>
+  <string key="preset.new">Novo preset…</string>
+  <string key="preset.delete">Excluir preset</string>
+  <string key="preset.scheduling">Agendamento</string>
+  <string key="preset.sm2_note">SM-2 usa o fator de facilidade clássico do Anki. O FSRS continua acompanhando a memória de cada cartão para as estatísticas.</string>
+  <string key="preset.starting_ease">Facilidade inicial</string>
+  <string key="preset.easy_bonus">Bônus do Fácil</string>
+  <string key="preset.hard_multiplier">Multiplicador do Difícil</string>
+  <string key="preset.desired_retention">Retenção desejada</string>
+  <string key="preset.at">em {value}</string>
+  <string key="preset.current"> · atual</string>
+  <string key="preset.per_day">{n} rev./dia</string>
+  <string key="preset.computing">calculando…</string>
+  <string key="preset.steps_limits">Passos e limites</string>
+  <string key="preset.learning_steps">Passos de aprendizado</string>
+  <string key="preset.steps_format">formato: 1m 10m 1h 1d</string>
+  <string key="preset.relearning_steps">Reaprendizado</string>
+  <string key="preset.max_interval">Intervalo máximo</string>
+  <string key="preset.days">dias</string>
+  <string key="preset.new_per_day">Novos por dia</string>
+  <string key="preset.reviews_per_day">Revisões por dia</string>
+  <string key="preset.leech">Sanguessuga</string>
+  <string key="preset.leech_value">{n} lapsos · {action}</string>
+  <string key="preset.leech_tag">marcar</string>
+  <string key="preset.leech_suspend">suspender</string>
+  <string key="preset.lapses">{n} lapsos</string>
+  <string key="preset.leech_tag_long">Marcar com tag</string>
+  <string key="preset.leech_suspend_long">Suspender</string>
+  <string key="preset.review_order">Ordem das revisões</string>
+  <string key="preset.bury">Enterrar irmãos</string>
+  <string key="preset.new_mix">Novos com revisões</string>
+  <string key="preset.fuzz">Fuzz e balanceamento de carga</string>
+  <string key="preset.new_order">Ordem dos novos</string>
+  <string key="preset.optimizer">Otimizador</string>
+  <string key="preset.suggested">sugerido</string>
+  <string key="preset.never_optimized">Nunca otimizado: usando os parâmetros padrão do FSRS-6.</string>
+  <string key="preset.optimized_today">Otimizado hoje.</string>
+  <string key="preset.optimized_ago">Última otimização há {n} dias.</string>
+  <string key="preset.reviews_here">{n} revisões neste preset. {last}</string>
+  <string key="preset.current_col">Atual</string>
+  <string key="preset.new_col">Novo</string>
+  <string key="preset.kept_defaults">Ainda há poucos dados: o otimizador manteve os parâmetros padrão.</string>
+  <string key="preset.optimizing">otimizando…</string>
+  <string key="preset.evaluating">avaliando…</string>
+  <string key="preset.apply">Aplicar novos parâmetros</string>
+  <string key="preset.optimize">Otimizar parâmetros</string>
+  <string key="preset.evaluate">Avaliar</string>
+  <string key="preset.simulator">Simulador</string>
+  <string key="preset.simulate_again">Simular de novo</string>
+  <string key="preset.days_365">365 dias</string>
+  <string key="preset.simulating">simulando…</string>
+  <string key="preset.no_simulation">sem simulação</string>
+  <string key="preset.daily_load">carga diária</string>
+  <string key="preset.retained">conhecimento retido</string>
+  <string key="preset.knee">Acima de {value}, cada ponto de retenção custa bem mais revisões do que acrescenta em memória.</string>
+
+  <!-- Review and new-card order -->
+  <string key="order.retrievability">Recuperabilidade ↑</string>
+  <string key="order.due">Vencimento</string>
+  <string key="order.random">Aleatória</string>
+  <string key="order.deck">Por baralho</string>
+  <string key="order.created">Ordem de criação</string>
+  <string key="order.mixed">Intercalados</string>
+  <string key="order.before">Antes das revisões</string>
+  <string key="order.after">Depois das revisões</string>
+
+  <!-- Statistics -->
+  <string key="stats.last_7">últimos 7 dias</string>
+  <string key="stats.last_30">últimos 30 dias</string>
+  <string key="stats.last_year">último ano</string>
+  <string key="stats.p7">7 dias</string>
+  <string key="stats.p30">30 dias</string>
+  <string key="stats.p365">1 ano</string>
+  <string key="stats.global">Global</string>
+  <string key="stats.time_h">{h} h {m}</string>
+  <string key="stats.reviews">Revisões</string>
+  <string key="stats.per_day">{n} por dia</string>
+  <string key="stats.true_retention">Retenção real</string>
+  <string key="stats.target">meta {pct}</string>
+  <string key="stats.time_studied">Tempo estudado</string>
+  <string key="stats.per_card">{n} s por cartão</string>
+  <string key="stats.retained">Conhecimento retido</string>
+  <string key="stats.this_month">{delta} no mês</string>
+  <string key="stats.daily">Revisões por dia</string>
+  <string key="stats.by_kind">por tipo</string>
+  <string key="stats.no_reviews">Sem revisões no período</string>
+  <string key="stats.k_review">revisão</string>
+  <string key="stats.k_learning">aprendizado</string>
+  <string key="stats.k_relearning">reaprendizado</string>
+  <string key="stats.forecast">Previsão</string>
+  <string key="stats.next_30">próximos 30 dias</string>
+  <string key="stats.tomorrow">amanhã · {n}</string>
+  <string key="stats.total">total {n}</string>
+  <string key="stats.calibration">Calibração</string>
+  <string key="stats.calibration_sub">R prevista × observada</string>
+  <string key="stats.calibrated">RMSE {pct} · bem calibrado</string>
+  <string key="stats.optimize_hint">RMSE {pct} · otimizar o preset pode ajudar</string>
+  <string key="stats.not_enough">Sem revisões suficientes</string>
+  <string key="stats.card_count">Contagem de cartões</string>
+  <string key="stats.c_new">Novos</string>
+  <string key="stats.c_learning">Aprendendo</string>
+  <string key="stats.c_young">Jovens</string>
+  <string key="stats.c_mature">Maduros</string>
+  <string key="stats.c_suspended">Suspensos</string>
+  <string key="stats.mature_note">Maduros: intervalo ≥ 21 dias</string>
+  <string key="stats.buttons">Botões</string>
+  <string key="stats.answer_freq">frequência de respostas</string>
+  <string key="stats.correct">{pct} acerto</string>
+  <string key="stats.hours">Horário</string>
+  <string key="stats.correct_by_hour">acerto por hora</string>
+  <string key="stats.distributions">Distribuições</string>
+  <string key="stats.studied_cards">cartões já estudados</string>
+  <string key="stats.d_dist">Dificuldade (1–10)</string>
+  <string key="stats.s_dist">Estabilidade (dias, escala log)</string>
+  <string key="stats.r_dist">Recuperabilidade agora</string>
+
+  <!-- Settings -->
+  <string key="settings.subtitle">Discite {version} · dados em {path}</string>
+  <string key="settings.appearance">Aparência</string>
+  <string key="settings.theme">Tema</string>
+  <string key="settings.theme_dark">Escuro · grafite</string>
+  <string key="settings.theme_light">Claro · papel</string>
+  <string key="settings.reading_width">Largura da coluna de leitura</string>
+  <string key="settings.sidebar_collapsed">Barra lateral recolhida</string>
+  <string key="settings.language_hint">Mais idiomas: coloque um arquivo XML na pasta locales (veja o README).</string>
+  <string key="settings.study">Estudo</string>
+  <string key="settings.rollover">O dia de estudo vira às</string>
+  <string key="settings.answer_cap">Teto do cronômetro por cartão</string>
+  <string key="settings.presets">Presets de agendamento</string>
+  <string key="settings.open_presets">Abrir opções do preset</string>
+  <string key="settings.data">Dados e backup</string>
+  <string key="settings.auto_backup">Backup automático (a cada 6 h de uso e ao fechar)</string>
+  <string key="settings.auto_backup_short">Backup automático</string>
+  <string key="settings.last_backup">Último backup: {when}</string>
+  <string key="settings.never">nunca</string>
+  <string key="settings.backup_now">Fazer backup agora</string>
+  <string key="settings.restore">Restaurar um backup (aplicado ao reabrir o Discite)</string>
+  <string key="settings.restore_button">Restaurar backup…</string>
+  <string key="settings.db_filter">Banco do Discite</string>
+  <string key="settings.data_folder">Pasta de dados</string>
+  <string key="settings.open_folder">Abrir pasta</string>
+  <string key="settings.orphans">Imagens que nada mais usa</string>
+  <string key="settings.clean_orphans">Limpar mídia órfã</string>
+  <string key="settings.integrity">Integridade do banco</string>
+  <string key="settings.check">Verificar</string>
+  <string key="settings.sample">Conteúdo de exemplo</string>
+  <string key="settings.about">Sobre</string>
+  <string key="settings.about_text">O agendamento usa o FSRS-6 (Free Spaced Repetition Scheduler), o mesmo modelo do Anki, com passos de aprendizado, fuzz e balanceamento de carga. Cada resposta fica registrada (nota, tempo, estado antes e depois), e o otimizador ajusta os parâmetros ao seu histórico.</string>
+  <string key="settings.fonts">Fontes: Literata e JetBrains Mono (SIL Open Font License).</string>
+
+  <!-- Command palette -->
+  <string key="palette.study_all">Estudar tudo ({n} cartões)</string>
+  <string key="palette.custom_study">Estudo personalizado…</string>
+  <string key="palette.backup_now">Fazer backup agora</string>
+  <string key="palette.go_dashboard">Ir para o Painel</string>
+  <string key="palette.go_stats">Ir para Estatísticas</string>
+  <string key="palette.go_cards">Ir para Cartões</string>
+  <string key="palette.open_subject">Abrir {name}</string>
+  <string key="palette.subject_hint">disciplina</string>
+  <string key="palette.notebook_of">Caderno de {name}</string>
+  <string key="palette.notebook_hint">caderno</string>
+  <string key="palette.study_deck">Estudar {name}</string>
+  <string key="palette.due_today">{n} hoje</string>
+  <string key="palette.preset_options">Opções do preset {name}</string>
+  <string key="palette.actions">Ações</string>
+  <string key="palette.navigate">Navegar</string>
+  <string key="palette.subjects">Disciplinas</string>
+  <string key="palette.decks">Baralhos</string>
+  <string key="palette.presets">Presets</string>
+  <string key="palette.pages">Páginas</string>
+  <string key="palette.page_text">No texto das páginas</string>
+  <string key="palette.cards">Cartões</string>
+  <string key="palette.search_cards">Buscar “{q}” nos cartões</string>
+  <string key="palette.hint">Buscar páginas, baralhos, ações…</string>
+  <string key="palette.nothing">Nada encontrado</string>
+
+  <!-- Dialogs -->
+  <string key="modal.edit_subject">Editar disciplina</string>
+  <string key="modal.new_subject">Nova disciplina</string>
+  <string key="modal.subject_hint">Disciplinas agrupam o caderno e os baralhos de um assunto.</string>
+  <string key="modal.name">Nome</string>
+  <string key="modal.subject_example">Ex.: Anatomia</string>
+  <string key="modal.color">Cor</string>
+  <string key="modal.color_n">Cor {n}</string>
+  <string key="modal.delete_q">Excluir “{name}”?</string>
+  <string key="modal.delete_subject_text">Apaga {pages} páginas, os baralhos e {cards} cartões (com o histórico). Um backup é feito antes.</string>
+  <string key="modal.delete_subject">Excluir disciplina</string>
+  <string key="modal.inside">Dentro de {path}</string>
+  <string key="modal.in">Em {name}</string>
+  <string key="modal.rename_deck">Renomear baralho</string>
+  <string key="modal.new_deck">Novo baralho</string>
+  <string key="modal.deck_name">Nome do baralho</string>
+  <string key="modal.delete_deck_text">Apaga {subdecks} sub-baralhos e {cards} cartões, com o histórico de revisões.</string>
+  <string key="modal.delete_page_text">A página e as subpáginas vão para a lixeira interna. Os cartões criados a partir delas continuam existindo.</string>
+  <string key="modal.delete_page">Excluir página</string>
+  <plural key="modal.delete_notes_q"><one>Excluir {n} nota?</one><other>Excluir {n} notas?</other></plural>
+  <string key="modal.delete_notes_text">Os cartões e o histórico de revisões delas são apagados.</string>
+  <string key="modal.card_not_found">Cartão não encontrado.</string>
+  <string key="modal.page_history">Histórico da página</string>
+  <string key="modal.page_history_text">Uma versão é guardada a cada 10 minutos de edição e ao sair. Restaurar substitui o conteúdo atual (que também vira uma versão).</string>
+  <string key="modal.no_versions">Nenhuma versão ainda.</string>
+  <string key="modal.datetime">%d/%m/%Y %H:%M</string>
+  <plural key="modal.blocks"><one>{title} · {n} bloco</one><other>{title} · {n} blocos</other></plural>
+  <string key="modal.restore">Restaurar</string>
+  <string key="modal.zoom_hint">{pct}% · role para ampliar</string>
+  <string key="modal.new_preset">Novo preset</string>
+  <string key="modal.new_preset_text">Copia as opções do preset atual. Depois, escolha quais baralhos usam cada preset.</string>
+  <string key="modal.preset_example">Ex.: Medicina</string>
+  <string key="modal.rename_preset">Renomear preset</string>
+  <plural key="modal.move_cards"><one>Mover {n} cartão</one><other>Mover {n} cartões</other></plural>
+  <string key="modal.pick_deck">Escolha o baralho de destino.</string>
+  <string key="modal.move">Mover</string>
+  <plural key="modal.add_tags"><one>Adicionar tags a {n} nota</one><other>Adicionar tags a {n} notas</other></plural>
+  <string key="modal.add_tags_text">Separe por espaço. Prefixe com - para remover (ex.: -antiga).</string>
+  <string key="modal.tags_example">prova-p2 revisar</string>
+  <string key="modal.apply">Aplicar</string>
+
+  <!-- Custom study -->
+  <string key="custom.title">Estudo personalizado</string>
+  <string key="custom.subtitle">Monta uma sessão fora da fila do dia. Escopo: {scope}.</string>
+  <string key="custom.forgotten">Esquecidos nos últimos dias</string>
+  <string key="custom.ahead">Revisar antes do vencimento</string>
+  <string key="custom.new_added">Novos adicionados recentemente</string>
+  <string key="custom.at_risk">Cartões em risco (R baixa)</string>
+  <string key="custom.flagged">Cartões marcados</string>
+  <string key="custom.search">Busca personalizada</string>
+  <string key="custom.next">Próximos</string>
+  <string key="custom.last">Últimos</string>
+  <string key="custom.days">dias</string>
+  <string key="custom.r_below">R abaixo de</string>
+  <string key="custom.search_hint">is:due tag:prova prop:r&lt;0.8</string>
+  <string key="custom.max_cards">Máximo de cartões</string>
+  <string key="custom.session_label">Estudo personalizado · {kind}</string>
+
+  <!-- CSV import -->
+  <string key="csv.title">Importar CSV</string>
+  <plural key="csv.lines"><one>{file} · {n} linha</one><other>{file} · {n} linhas</other></plural>
+  <string key="csv.header">A primeira linha é cabeçalho</string>
+  <string key="csv.columns">Colunas → campos</string>
+  <string key="csv.ignore">Ignorar</string>
+  <string key="csv.tags">Tags</string>
+  <string key="csv.import">Importar</string>
+
+  <!-- Images -->
+  <string key="media.unsupported">Formato de imagem não suportado</string>
+  <string key="media.invalid">Imagem inválida</string>
+  <string key="media.write_failed">Não foi possível gravar {path}</string>
+  <string key="media.read_failed">Não foi possível ler {path}</string>
+  <string key="media.paste_invalid">Imagem colada inválida</string>
+  <string key="media.unavailable">imagem indisponível</string>
+
+  <!-- Notifications -->
+  <string key="toast.page_not_found">Página não encontrada</string>
+  <string key="toast.create_subject_first_notes">Crie uma disciplina antes de adicionar notas</string>
+  <string key="toast.backup_failed">Backup falhou: {error}</string>
+  <string key="toast.create_subject_first">Crie uma disciplina primeiro</string>
+  <string key="toast.sample_loaded">Exemplo carregado: quatro disciplinas com páginas e cartões</string>
+  <string key="toast.nothing_to_study">Nada para estudar agora. Tudo em dia!</string>
+  <string key="toast.leech">Cartão virou sanguessuga: vale reescrever ou dividir em partes menores.</string>
+  <string key="toast.nothing_to_undo">Nada para desfazer</string>
+  <string key="toast.answer_undone">Resposta desfeita</string>
+  <plural key="toast.session_ended"><one>Sessão encerrada: {n} cartão, {pct} de acerto</one><other>Sessão encerrada: {n} cartões, {pct} de acerto</other></plural>
+  <string key="toast.card_suspended">Cartão suspenso</string>
+  <string key="toast.card_buried">Cartão enterrado até amanhã</string>
+  <string key="toast.card_flagged">Cartão marcado</string>
+  <string key="toast.card_unflagged">Marcação removida</string>
+  <string key="toast.note_saved">Nota salva</string>
+  <plural key="toast.note_added"><one>Nota adicionada · {n} cartão</one><other>Nota adicionada · {n} cartões</other></plural>
+  <string key="toast.create_deck_first">Crie um baralho nesta disciplina primeiro</string>
+  <string key="toast.page_created">Página “{title}” criada</string>
+  <string key="toast.exported">Exportado para {path}</string>
+  <string key="toast.markdown_imported">Markdown importado</string>
+  <string key="toast.cards_reset">Cartões redefinidos (o histórico continua no registro)</string>
+  <string key="toast.bad_steps">Passos inválidos: use algo como “1m 10m 1h 1d”</string>
+  <string key="toast.preset_saved">Preset salvo</string>
+  <string key="toast.params_applied">Parâmetros aplicados · memória de {n} cartões recalculada</string>
+  <string key="toast.version_restored">Versão restaurada</string>
+  <string key="toast.no_cards_match">Nenhum cartão corresponde a esse critério</string>
+  <string key="toast.empty_file">Arquivo vazio</string>
+  <string key="toast.csv_imported">{notes} notas importadas · {cards} cartões</string>
+  <string key="toast.backup_done">Backup feito</string>
+  <string key="toast.restore_pending">Feche e abra o Discite para concluir a restauração (o banco atual vai para backups).</string>
+  <plural key="toast.files_removed"><one>{n} arquivo removido</one><other>{n} arquivos removidos</other></plural>
+  <string key="toast.db_ok">Banco íntegro</string>
+  <string key="toast.db_problem">Problema no banco: {detail}</string>
+  <string key="toast.sample_short">Exemplo carregado</string>
+
+  <!-- Errors -->
+  <string key="error.create_folder">Não foi possível criar {path}</string>
+  <string key="error.restore">Não foi possível restaurar o backup</string>
+  <string key="error.open_db">Não foi possível abrir discite.db</string>
+  <string key="error.window">Não foi possível abrir a janela: {error}</string>
+
+</language>

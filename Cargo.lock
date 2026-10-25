@@ -863,6 +863,7 @@ dependencies = [
  "rand 0.9.5",
  "resvg",
  "rfd",
+ "roxmltree 0.20.0",
  "rusqlite",
  "serde",
  "serde_json",

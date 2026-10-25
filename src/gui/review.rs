@@ -9,6 +9,7 @@ use super::richtext::{self, Look};
 use super::theme::*;
 use super::widgets::*;
 use super::{App, Screen};
+use crate::{tr, tr_n};
 use crate::cards::{self, Diff, Face, NoteKind};
 use crate::db::{self, Card, Note, Rev};
 use crate::srs::{self, Outcome, Queue, ReviewOrder, State};
@@ -136,7 +137,7 @@ pub fn start(app: &mut App, scope: Scope) {
             let n: Vec<i64> = news.iter().map(|c| c.id).collect();
             queue = mix(r, n, first_cfg.new_mix);
             (title, color) = match &scope {
-                Scope::All => ("Todas as disciplinas".to_owned(), pal().accent),
+                Scope::All => (tr!("review.all_subjects"), pal().accent),
                 Scope::Subject(s) => (app.subject(*s).map(|s| s.name.clone()).unwrap_or_default(), app.subject(*s).map(|s| subject_color(s.color)).unwrap_or(pal().accent)),
                 Scope::Deck(d) => (app.deck_path(*d), app.subject_color_of_deck(*d)),
                 Scope::Cards(..) => unreachable!(),
@@ -164,7 +165,7 @@ pub fn start(app: &mut App, scope: Scope) {
     };
     next_card(app, &mut s, false);
     if s.current.is_none() && s.waiting_until.is_none() {
-        app.toast("Nada para estudar agora. Tudo em dia!");
+        app.toast(tr!("toast.nothing_to_study"));
         return;
     }
     if app.screen != Screen::Review {
@@ -289,12 +290,13 @@ fn answer(app: &mut App, rating: u32) {
             card.queue = Queue::Suspended;
         }
         let mut note = cur.note.clone();
-        if !note.tags.split_whitespace().any(|t| t == "sanguessuga") {
+        let leech_tag = tr!("review.leech_tag");
+        if !note.tags.split_whitespace().any(|t| t == leech_tag) {
             old_tags = Some(note.tags.clone());
-            note.tags = format!("{} sanguessuga", note.tags);
+            note.tags = format!("{} {leech_tag}", note.tags);
             let _ = app.db.update_note(&mut note, card.deck_id);
         }
-        app.toast("Cartão virou sanguessuga: vale reescrever ou dividir em partes menores.");
+        app.toast(tr!("toast.leech"));
     }
     let duration = (cur.shown.elapsed().as_millis() as i64).min(app.cfg.answer_cap_secs.max(5) as i64 * 1000);
     let now = srs::now_ms();
@@ -351,7 +353,7 @@ fn undo(app: &mut App) {
     let Some(mut s) = app.session.take() else { return };
     let Some(u) = s.undo.pop() else {
         app.session = Some(s);
-        app.toast("Nada para desfazer");
+        app.toast(tr!("toast.nothing_to_undo"));
         return;
     };
     let r = (|| -> anyhow::Result<()> {
@@ -385,7 +387,7 @@ fn undo(app: &mut App) {
     }
     app.changed();
     app.session = Some(s);
-    app.toast("Resposta desfeita");
+    app.toast(tr!("toast.answer_undone"));
 }
 
 fn set_current_queue(app: &mut App, q: Queue, msg: &str) {
@@ -404,7 +406,7 @@ fn set_current_queue(app: &mut App, q: Queue, msg: &str) {
 pub fn exit(app: &mut App) {
     if let Some(s) = app.session.take() {
         if s.done > 0 {
-            app.toast(format!("Sessão encerrada: {} {}, {} de acerto", s.done, if s.done == 1 { "cartão" } else { "cartões" }, pct(1.0 - s.again as f32 / s.done.max(1) as f32, 0)));
+            app.toast(tr_n!("toast.session_ended", s.done, pct = pct(1.0 - s.again as f32 / s.done.max(1) as f32, 0)));
         }
     }
     let back = match app.back_screen {
@@ -457,7 +459,7 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
         (s.title.clone(), s.color, s.done, s.remaining(), s.current.as_ref().map(|c| c.card.s.state))
     };
     let mut lu = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(bar.min + vec2(24.0, 0.0), pos2(bar.center().x - 180.0, bar.bottom()))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-    if button_kbd(&mut lu, "← Sair", Some("Esc"), Btn::Ghost, 34.0).clicked() {
+    if button_kbd(&mut lu, &tr!("review.exit"), Some("Esc"), Btn::Ghost, 34.0).clicked() {
         exit(app);
         return;
     }
@@ -479,7 +481,7 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
     // Contadores.
     let (n_new, n_learn, n_rev) = counts_left(app);
     let center = bar.center();
-    let items = [(n_new, "novos", p.easy, State::New), (n_learn, "aprendendo", p.hard, State::Learning), (n_rev, "revisão", p.good, State::Review)];
+    let items = [(n_new, tr!("dash.new"), p.easy, State::New), (n_learn, tr!("dash.learning"), p.hard, State::Learning), (n_rev, tr!("dash.review"), p.good, State::Review)];
     let widths: Vec<f32> = items.iter().map(|(n, l, _, _)| text_width(ui.painter(), &n.to_string(), serif(17.0, W::Semi)) + 6.0 + text_width(ui.painter(), l, serif(13.0, W::Regular))).collect();
     let total_w: f32 = widths.iter().sum::<f32>() + 36.0;
     let mut x = center.x - total_w / 2.0;
@@ -503,13 +505,13 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
     ru.spacing_mut().item_spacing.x = 6.0;
     let has_cur = app.session.as_ref().is_some_and(|s| s.current.is_some());
     let has_origin = app.session.as_ref().and_then(|s| s.current.as_ref()).is_some_and(|c| c.note.source_page.is_some());
-    if has_origin && button_kbd(&mut ru, "Origem", Some("O"), Btn::Ghost, 34.0).clicked() {
+    if has_origin && button_kbd(&mut ru, &tr!("review.origin"), Some("O"), Btn::Ghost, 34.0).clicked() {
         open_origin(app);
     }
-    if has_cur && button_kbd(&mut ru, "Info", Some("I"), Btn::Ghost, 34.0).clicked() {
+    if has_cur && button_kbd(&mut ru, &tr!("review.info"), Some("I"), Btn::Ghost, 34.0).clicked() {
         open_info(app);
     }
-    if has_cur && button_kbd(&mut ru, "Editar", Some("E"), Btn::Ghost, 34.0).clicked() {
+    if has_cur && button_kbd(&mut ru, &tr!("review.edit"), Some("E"), Btn::Ghost, 34.0).clicked() {
         open_edit(app);
     }
     if let Some(cur) = app.session.as_ref().and_then(|s| s.current.as_ref()) {
@@ -641,8 +643,8 @@ fn keyboard(app: &mut App, ui: &Ui) {
     let texts: Vec<String> = ctx.input(|i| i.events.iter().filter_map(|e| if let egui::Event::Text(t) = e { Some(t.clone()) } else { None }).collect());
     for t in texts {
         match t.as_str() {
-            "@" => set_current_queue(app, Queue::Suspended, "Cartão suspenso"),
-            "-" => set_current_queue(app, Queue::BuriedUser, "Cartão enterrado até amanhã"),
+            "@" => set_current_queue(app, Queue::Suspended, &tr!("toast.card_suspended")),
+            "-" => set_current_queue(app, Queue::BuriedUser, &tr!("toast.card_buried")),
             "*" => toggle_flag(app),
             _ => {}
         }
@@ -660,7 +662,7 @@ fn toggle_flag(app: &mut App) {
     c.card.flagged = !c.card.flagged;
     let (id, on) = (c.card.id, c.card.flagged);
     let _ = app.db.set_flag(&[id], on);
-    app.toast(if on { "Cartão marcado" } else { "Marcação removida" });
+    app.toast(tr!(if on { "toast.card_flagged" } else { "toast.card_unflagged" }));
     app.data_version += 1;
 }
 
@@ -690,12 +692,7 @@ fn card_view(app: &mut App, ui: &mut Ui, body: Rect) {
     let card_w = 720.0f32.min(main.width() - 48.0);
     let (kind_label, tags, revealed, face, card, note) = {
         let c = app.session.as_ref().unwrap().current.as_ref().unwrap();
-        let st = match c.card.s.state {
-            State::New => "novo",
-            State::Learning => "aprendendo",
-            State::Review => "revisão",
-            State::Relearning => "reaprendendo",
-        };
+        let st = c.card.s.state.label();
         (format!("{} · {}", c.note.kind.label(), st), c.note.tag_list(), c.revealed, c.face.clone(), c.card.clone(), c.note.clone())
     };
     let mut mu = ui.new_child(egui::UiBuilder::new().max_rect(main.shrink(24.0)).layout(egui::Layout::top_down(egui::Align::Center)));
@@ -721,7 +718,7 @@ fn card_view(app: &mut App, ui: &mut Ui, body: Rect) {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = 6.0;
                             if card.flagged {
-                                chip(ui, "★ marcado", true, 22.0);
+                                chip(ui, &tr!("review.flagged"), true, 22.0);
                             }
                             for t in tags.iter().rev().take(3) {
                                 chip(ui, &format!("#{t}"), false, 22.0);
@@ -756,7 +753,7 @@ fn card_view(app: &mut App, ui: &mut Ui, body: Rect) {
                         let r = srs::retrievability(&card.s, decay, &app.clock, srs::now_ms());
                         let mut meta = Vec::new();
                         if let Some(r) = r {
-                            meta.push(format!("R prevista {}", pct(r, 0)));
+                            meta.push(tr!("review.predicted_r", pct = pct(r, 0)));
                         }
                         if let Some(s) = card.s.stability {
                             meta.push(format!("S {}", srs::days_label(s as f64)));
@@ -764,7 +761,7 @@ fn card_view(app: &mut App, ui: &mut Ui, body: Rect) {
                         if let Some(d) = card.s.difficulty {
                             meta.push(format!("D {}", srs::decimal(d as f64, 1)));
                         }
-                        meta.push(if card.s.lapses > 0 { format!("{} lapsos", card.s.lapses) } else if card.s.reps == 0 { "primeira vez".into() } else { format!("{}ª revisão", card.s.reps + 1) });
+                        meta.push(if card.s.lapses > 0 { tr_n!("review.lapses", card.s.lapses) } else if card.s.reps == 0 { tr!("review.first_time") } else { tr!("review.nth_review", n = card.s.reps + 1) });
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 18.0;
                             for m in meta {
@@ -785,11 +782,11 @@ fn card_view(app: &mut App, ui: &mut Ui, body: Rect) {
     let mut fu = ui.new_child(egui::UiBuilder::new().max_rect(foot.shrink2(vec2(24.0, 4.0))).layout(egui::Layout::top_down(egui::Align::Center)));
     fu.spacing_mut().item_spacing.y = 14.0;
     if !revealed {
-        if button_sized(&mut fu, "Mostrar resposta", Some("Espaço"), Btn::Primary, vec2(320.0, 52.0), true).clicked() {
+        if button_sized(&mut fu, &tr!("review.show_answer"), Some(&tr!("common.key_space")), Btn::Primary, vec2(320.0, 52.0), true).clicked() {
             reveal(app);
         }
         let (r, _) = fu.allocate_exact_size(vec2(400.0, 30.0), Sense::hover());
-        text(fu.painter(), r.center(), Align2::CENTER_CENTER, "Tente lembrar antes de virar o cartão.", serif(13.0, W::Italic), p.muted, 400.0);
+        text(fu.painter(), r.center(), Align2::CENTER_CENTER, &tr!("review.try_recall"), serif(13.0, W::Italic), p.muted, 400.0);
     } else {
         let (preview, preview_at) = app.session.as_ref().unwrap().current.as_ref().map(|c| (c.preview.clone(), c.preview_at)).unwrap();
         let w = card_w;
@@ -798,7 +795,8 @@ fn card_view(app: &mut App, ui: &mut Ui, body: Rect) {
         let bw = (w - 3.0 * gap) / 4.0;
         let now = preview_at;
         let mut clicked = None;
-        for (i, (label_s, col)) in [("Errei", p.again), ("Difícil", p.hard), ("Bom", p.good), ("Fácil", p.easy)].into_iter().enumerate() {
+        for (i, (key, col)) in [("rating.again", p.again), ("rating.hard", p.hard), ("rating.good", p.good), ("rating.easy", p.easy)].into_iter().enumerate() {
+            let label_s = &tr!(key);
             let r = Rect::from_min_size(pos2(row.left() + i as f32 * (bw + gap), row.top()), vec2(bw, 72.0));
             let resp = fu.interact(r, fu.scope_id().with(("rate", i)), Sense::click());
             let bg = soft(col, if resp.hovered() { 0.22 } else { 0.13 });
@@ -814,7 +812,7 @@ fn card_view(app: &mut App, ui: &mut Ui, body: Rect) {
             let x0 = r.center().x - (lw + 8.0 + kw) / 2.0;
             text(fu.painter(), pos2(x0, r.top() + 46.0), Align2::LEFT_CENTER, label_s, serif(16.0, W::Semi), p.text, lw + 4.0);
             kbd(fu.painter(), pos2(x0 + lw + 8.0, r.top() + 46.0), Align2::LEFT_CENTER, &(i + 1).to_string());
-            a11y(&resp, egui::accesskit::Role::Button, &format!("{label_s}, próximo em {ivl}"), None);
+            a11y(&resp, egui::accesskit::Role::Button, &tr!("review.rating_next", rating = label_s, interval = ivl), None);
             if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 clicked = Some(i as u32 + 1);
             }
@@ -827,10 +825,10 @@ fn card_view(app: &mut App, ui: &mut Ui, body: Rect) {
         let w = 4.0 * 110.0;
         ui.add_space(((ui.available_width() - w) / 2.0).max(0.0));
         ui.spacing_mut().item_spacing.x = 20.0;
-        kbd_hint(ui, "Ctrl Z", "desfazer");
-        kbd_hint(ui, "@", "suspender");
-        kbd_hint(ui, "-", "enterrar");
-        kbd_hint(ui, "*", "marcar");
+        kbd_hint(ui, "Ctrl Z", &tr!("review.hint_undo"));
+        kbd_hint(ui, "@", &tr!("review.hint_suspend"));
+        kbd_hint(ui, "-", &tr!("review.hint_bury"));
+        kbd_hint(ui, "*", &tr!("review.hint_flag"));
     });
 }
 
@@ -846,7 +844,7 @@ fn type_box(id: egui::Id, ui: &mut Ui, expected: &str, revealed: bool) {
         let resp = ui.add(
             egui::TextEdit::singleline(&mut typed)
                 .font(serif(18.0, W::Regular))
-                .hint_text(egui::RichText::new("Digite a resposta e tecle Enter").italics().color(p.dim))
+                .hint_text(egui::RichText::new(tr!("review.type_answer")).italics().color(p.dim))
                 .desired_width(ui.available_width())
                 .margin(vec2(12.0, 10.0)),
         );
@@ -859,7 +857,7 @@ fn type_box(id: egui::Id, ui: &mut Ui, expected: &str, revealed: bool) {
         let mut job = egui::text::LayoutJob::default();
         let fmt = |c: Color32, bg: Color32| egui::TextFormat { font_id: mono(17.0), color: c, background: bg, ..Default::default() };
         if typed.trim().is_empty() {
-            job.append("(nada digitado)", 0.0, egui::TextFormat { font_id: serif(15.0, W::Italic), color: p.muted, ..Default::default() });
+            job.append(&tr!("review.nothing_typed"), 0.0, egui::TextFormat { font_id: serif(15.0, W::Italic), color: p.muted, ..Default::default() });
         } else {
             for (ch, d) in a {
                 let (c, bg) = match d {
@@ -912,17 +910,17 @@ fn waiting(app: &mut App, ui: &mut Ui, body: Rect, until: i64) {
     paint_card(ui.painter(), r);
     let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(r.shrink(32.0)).layout(egui::Layout::top_down(egui::Align::Center)));
     cu.spacing_mut().item_spacing.y = 14.0;
-    caps_label(&mut cu, "Intervalo");
+    caps_label(&mut cu, &tr!("review.break"));
     let mins = ((until - srs::now_ms()) as f64 / 60_000.0).ceil().max(1.0);
-    para(&mut cu, &format!("O próximo cartão em aprendizado volta em {} min.", mins), serif(20.0, W::Regular), p.text);
-    para(&mut cu, "Os passos curtos fixam a memória recente. Aproveite para revisar suas anotações.", serif(14.0, W::Italic), p.muted);
+    para(&mut cu, &tr!("review.learning_returns", n = mins), serif(20.0, W::Regular), p.text);
+    para(&mut cu, &tr!("review.break_tip"), serif(14.0, W::Italic), p.muted);
     cu.horizontal(|ui| {
-        if button(ui, "Mostrar agora", Btn::Primary, 36.0).clicked() {
+        if button(ui, &tr!("review.show_now"), Btn::Primary, 36.0).clicked() {
             let mut s = app.session.take().unwrap();
             next_card(app, &mut s, true);
             app.session = Some(s);
         }
-        if button(ui, "Encerrar", Btn::Secondary, 36.0).clicked() {
+        if button(ui, &tr!("review.end"), Btn::Secondary, 36.0).clicked() {
             exit(app);
         }
     });
@@ -935,30 +933,30 @@ fn finished(app: &mut App, ui: &mut Ui, body: Rect) {
     paint_card(ui.painter(), r);
     let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(r.shrink(32.0)).layout(egui::Layout::top_down(egui::Align::Min)));
     cu.spacing_mut().item_spacing.y = 14.0;
-    caps_label(&mut cu, "Sessão concluída");
-    para(&mut cu, if done > 0 { "Bom trabalho. Tudo o que vencia hoje foi revisado." } else { "Nada mais para estudar agora." }, serif(22.0, W::Semi), p.text);
+    caps_label(&mut cu, &tr!("review.done_title"));
+    para(&mut cu, &tr!(if done > 0 { "review.done_good" } else { "review.done_empty" }), serif(22.0, W::Semi), p.text);
     let tomorrow = crate::stats::forecast(&app.db, &crate::stats::Scope(None), &app.clock, 2).ok().and_then(|v| v.get(1).copied()).unwrap_or(0);
     cu.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 28.0;
         for (v, l) in [
-            (done.to_string(), "cartões"),
-            (if done > 0 { pct(1.0 - again as f32 / done as f32, 0) } else { "—".into() }, "acerto"),
-            (format!("{} min", (time_ms.max(elapsed.as_millis() as i64 / 4) as f64 / 60_000.0).round()), "estudando"),
-            (tomorrow.to_string(), "amanhã"),
+            (done.to_string(), tr!("review.stat_cards")),
+            (if done > 0 { pct(1.0 - again as f32 / done as f32, 0) } else { "—".into() }, tr!("review.stat_correct")),
+            (tr!("time.minutes", n = (time_ms.max(elapsed.as_millis() as i64 / 4) as f64 / 60_000.0).round()), tr!("review.stat_studying")),
+            (tomorrow.to_string(), tr!("review.stat_tomorrow")),
         ] {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 label(ui, &v, serif(26.0, W::Semi), p.text);
-                label(ui, l, serif(12.0, W::Regular), p.muted);
+                label(ui, &l, serif(12.0, W::Regular), p.muted);
             });
         }
     });
     cu.add_space(6.0);
     cu.horizontal(|ui| {
-        if button(ui, "Voltar", Btn::Primary, 36.0).clicked() {
+        if button(ui, &tr!("review.back"), Btn::Primary, 36.0).clicked() {
             exit(app);
         }
-        if button(ui, "Estudo personalizado", Btn::Secondary, 36.0).clicked() {
+        if button(ui, &tr!("review.custom_study"), Btn::Secondary, 36.0).clicked() {
             let deck = match app.session.as_ref().map(|s| s.scope.clone()) {
                 Some(Scope::Deck(d)) => Some(d),
                 _ => None,

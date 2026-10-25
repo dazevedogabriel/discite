@@ -21,21 +21,22 @@ pub enum NoteKind {
 impl NoteKind {
     pub const ALL: [NoteKind; 5] = [NoteKind::Basic, NoteKind::BasicReversed, NoteKind::Cloze, NoteKind::TypeIn, NoteKind::Occlusion];
 
-    pub fn label(self) -> &'static str {
-        match self {
-            NoteKind::Basic => "Básico",
-            NoteKind::BasicReversed => "Básico + invertido",
-            NoteKind::Cloze => "Cloze",
-            NoteKind::TypeIn => "Digitar resposta",
-            NoteKind::Occlusion => "Oclusão de imagem",
-        }
+    pub fn label(self) -> String {
+        crate::tr!(match self {
+            NoteKind::Basic => "kind.basic",
+            NoteKind::BasicReversed => "kind.basic_reversed",
+            NoteKind::Cloze => "kind.cloze",
+            NoteKind::TypeIn => "kind.type_in",
+            NoteKind::Occlusion => "kind.occlusion",
+        })
     }
 
+    /// Chaves de tradução dos campos (`tr!` dá o nome mostrado).
     pub fn field_names(self) -> &'static [&'static str] {
         match self {
-            NoteKind::Basic | NoteKind::BasicReversed | NoteKind::TypeIn => &["Frente", "Verso", "Extra"],
-            NoteKind::Cloze => &["Texto", "Extra"],
-            NoteKind::Occlusion => &["Imagem", "Máscaras", "Cabeçalho", "Extra"],
+            NoteKind::Basic | NoteKind::BasicReversed | NoteKind::TypeIn => &["field.front", "field.back", "field.extra"],
+            NoteKind::Cloze => &["field.text", "field.extra"],
+            NoteKind::Occlusion => &["field.image", "field.masks", "field.header", "field.extra"],
         }
     }
 
@@ -206,7 +207,7 @@ pub fn sort_field(kind: NoteKind, fields: &[String]) -> String {
     let f0 = fields.first().map(String::as_str).unwrap_or("");
     let text = match kind {
         NoteKind::Cloze => strip_cloze(f0),
-        NoteKind::Occlusion => fields.get(2).cloned().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| "Oclusão de imagem".into()),
+        NoteKind::Occlusion => fields.get(2).cloned().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| NoteKind::Occlusion.label()),
         _ => f0.to_owned(),
     };
     crate::rich::plain(&text)

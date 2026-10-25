@@ -5,6 +5,7 @@
 use super::theme::*;
 use super::widgets::*;
 use super::{App, Screen, browser, review};
+use crate::{tr, tr_n};
 use crate::cards::NoteKind;
 use crate::db::{Block, Note};
 use eframe::egui::{self, Align2, CornerRadius, Key, Modifiers, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
@@ -74,7 +75,7 @@ fn actions(ui: &mut Ui, ok: &str, danger: bool, enabled: bool) -> (bool, bool) {
         if button_sized(ui, ok, None, if danger { Btn::Danger } else { Btn::Primary }, vec2(w, 36.0), enabled).clicked() {
             res.0 = true;
         }
-        if button(ui, "Cancelar", Btn::Secondary, 36.0).clicked() {
+        if button(ui, &tr!("common.cancel"), Btn::Secondary, 36.0).clicked() {
             res.1 = true;
         }
     });
@@ -91,13 +92,13 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         match &mut modal {
             Modal::Subject { id, name, color } => {
                 ui.set_width(420.0);
-                title(ui, if id.is_some() { "Editar disciplina" } else { "Nova disciplina" }, "Disciplinas agrupam o caderno e os baralhos de um assunto.");
-                caps_label(ui, "Nome");
-                let r = text_field(ui, name, "Ex.: Anatomia", 372.0, 36.0);
+                title(ui, &tr!(if id.is_some() { "modal.edit_subject" } else { "modal.new_subject" }), &tr!("modal.subject_hint"));
+                caps_label(ui, &tr!("modal.name"));
+                let r = text_field(ui, name, &tr!("modal.subject_example"), 372.0, 36.0);
                 if id.is_none() && !r.has_focus() && name.is_empty() {
                     r.request_focus();
                 }
-                caps_label(ui, "Cor");
+                caps_label(ui, &tr!("modal.color"));
                 ui.horizontal(|ui| {
                     for i in 0..8 {
                         let (r, resp) = ui.allocate_exact_size(vec2(32.0, 32.0), Sense::click());
@@ -105,13 +106,13 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         if *color == i {
                             ui.painter().circle_stroke(r.center(), 14.5, Stroke::new(2.0, p.text));
                         }
-                        a11y(&resp, egui::accesskit::Role::RadioButton, &format!("Cor {}", i + 1), Some(*color == i));
+                        a11y(&resp, egui::accesskit::Role::RadioButton, &tr!("modal.color_n", n = i + 1), Some(*color == i));
                         if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                             *color = i;
                         }
                     }
                 });
-                let (ok, cancel) = actions(ui, if id.is_some() { "Salvar" } else { "Criar" }, false, !name.trim().is_empty());
+                let (ok, cancel) = actions(ui, &tr!(if id.is_some() { "common.save" } else { "common.create" }), false, !name.trim().is_empty());
                 if cancel {
                     keep = false;
                 }
@@ -149,8 +150,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 let name = app.subject(*id).map(|s| s.name.clone()).unwrap_or_default();
                 let cards = crate::stats::card_counts(&app.db, &crate::stats::Scope(Some(&app.subject_decks(*id)))).map(|c| c.total()).unwrap_or(0);
                 let pages = app.db.list_pages(*id).map(|v| v.len()).unwrap_or(0);
-                title(ui, &format!("Excluir “{name}”?"), &format!("Apaga {pages} páginas, os baralhos e {cards} cartões (com o histórico). Um backup é feito antes."));
-                let (ok, cancel) = actions(ui, "Excluir disciplina", true, true);
+                title(ui, &tr!("modal.delete_q", name = name), &tr!("modal.delete_subject_text", pages = pages, cards = cards));
+                let (ok, cancel) = actions(ui, &tr!("modal.delete_subject"), true, true);
                 if cancel {
                     keep = false;
                 }
@@ -170,15 +171,15 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             Modal::Deck { id, subject, parent, name } => {
                 ui.set_width(420.0);
                 let sub = match parent {
-                    Some(pid) => format!("Dentro de {}", app.deck_path(*pid)),
-                    None => format!("Em {}", app.subject(*subject).map(|s| s.name.as_str()).unwrap_or("")),
+                    Some(pid) => tr!("modal.inside", path = app.deck_path(*pid)),
+                    None => tr!("modal.in", name = app.subject(*subject).map(|s| s.name.as_str()).unwrap_or("")),
                 };
-                title(ui, if id.is_some() { "Renomear baralho" } else { "Novo baralho" }, &sub);
-                let r = text_field(ui, name, "Nome do baralho", 372.0, 36.0);
+                title(ui, &tr!(if id.is_some() { "modal.rename_deck" } else { "modal.new_deck" }), &sub);
+                let r = text_field(ui, name, &tr!("modal.deck_name"), 372.0, 36.0);
                 if !r.has_focus() && name.is_empty() {
                     r.request_focus();
                 }
-                let (ok, cancel) = actions(ui, if id.is_some() { "Salvar" } else { "Criar" }, false, !name.trim().is_empty());
+                let (ok, cancel) = actions(ui, &tr!(if id.is_some() { "common.save" } else { "common.create" }), false, !name.trim().is_empty());
                 if cancel {
                     keep = false;
                 }
@@ -201,8 +202,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 ui.set_width(440.0);
                 let ids = crate::db::subtree(&app.decks, *id);
                 let cards = crate::stats::card_counts(&app.db, &crate::stats::Scope(Some(&ids))).map(|c| c.total()).unwrap_or(0);
-                title(ui, &format!("Excluir “{}”?", app.deck_path(*id)), &format!("Apaga {} sub-baralhos e {cards} cartões, com o histórico de revisões.", ids.len() - 1));
-                let (ok, cancel) = actions(ui, "Excluir", true, true);
+                title(ui, &tr!("modal.delete_q", name = app.deck_path(*id)), &tr!("modal.delete_deck_text", subdecks = ids.len() - 1, cards = cards));
+                let (ok, cancel) = actions(ui, &tr!("common.delete"), true, true);
                 if cancel {
                     keep = false;
                 }
@@ -219,8 +220,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             Modal::DeletePage(id) => {
                 ui.set_width(420.0);
                 let t = app.db.page(*id).ok().flatten().map(|p| p.title).unwrap_or_default();
-                title(ui, &format!("Excluir “{t}”?"), "A página e as subpáginas vão para a lixeira interna. Os cartões criados a partir delas continuam existindo.");
-                let (ok, cancel) = actions(ui, "Excluir página", true, true);
+                title(ui, &tr!("modal.delete_q", name = t), &tr!("modal.delete_page_text"));
+                let (ok, cancel) = actions(ui, &tr!("modal.delete_page"), true, true);
                 if cancel {
                     keep = false;
                 }
@@ -237,8 +238,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             }
             Modal::DeleteNotes(ids) => {
                 ui.set_width(420.0);
-                title(ui, &format!("Excluir {} {}?", ids.len(), if ids.len() == 1 { "nota" } else { "notas" }), "Os cartões e o histórico de revisões delas são apagados.");
-                let (ok, cancel) = actions(ui, "Excluir", true, true);
+                title(ui, &tr_n!("modal.delete_notes_q", ids.len()), &tr!("modal.delete_notes_text"));
+                let (ok, cancel) = actions(ui, &tr!("common.delete"), true, true);
                 if cancel {
                     keep = false;
                 }
@@ -259,21 +260,21 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         egui::ScrollArea::vertical().max_height(560.0).show(ui, |ui| browser::card_details(app, ui, &card, false));
                     }
                     None => {
-                        label(ui, "Cartão não encontrado.", serif(14.0, W::Regular), p.muted);
+                        label(ui, &tr!("modal.card_not_found"), serif(14.0, W::Regular), p.muted);
                     }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if button(ui, "Fechar", Btn::Secondary, 34.0).clicked() {
+                    if button(ui, &tr!("common.close"), Btn::Secondary, 34.0).clicked() {
                         keep = false;
                     }
                 });
             }
             Modal::Versions(page) => {
                 ui.set_width(520.0);
-                title(ui, "Histórico da página", "Uma versão é guardada a cada 10 minutos de edição e ao sair. Restaurar substitui o conteúdo atual (que também vira uma versão).");
+                title(ui, &tr!("modal.page_history"), &tr!("modal.page_history_text"));
                 let versions = app.db.versions(*page).unwrap_or_default();
                 if versions.is_empty() {
-                    label(ui, "Nenhuma versão ainda.", serif(13.0, W::Italic), p.muted);
+                    label(ui, &tr!("modal.no_versions"), serif(13.0, W::Italic), p.muted);
                 }
                 let mut restore: Option<(String, Vec<Block>)> = None;
                 egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| {
@@ -282,13 +283,13 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, p.line_row));
                         let when = {
                             use chrono::TimeZone;
-                            chrono::Local.timestamp_millis_opt(*at).single().map(|t| t.format("%d/%m/%Y %H:%M").to_string()).unwrap_or_default()
+                            chrono::Local.timestamp_millis_opt(*at).single().map(|t| t.format(&tr!("modal.datetime")).to_string()).unwrap_or_default()
                         };
                         text(ui.painter(), pos2(r.left(), r.center().y - 8.0), Align2::LEFT_CENTER, &when, serif(13.0, W::Semi), p.text, 200.0);
-                        text(ui.painter(), pos2(r.left(), r.center().y + 9.0), Align2::LEFT_CENTER, &format!("{t} · {} blocos", blocks.len()), serif(12.0, W::Regular), p.muted, 300.0);
+                        text(ui.painter(), pos2(r.left(), r.center().y + 9.0), Align2::LEFT_CENTER, &tr_n!("modal.blocks", blocks.len(), title = t), serif(12.0, W::Regular), p.muted, 300.0);
                         let br = Rect::from_min_size(pos2(r.right() - 96.0, r.center().y - 14.0), vec2(96.0, 28.0));
                         let mut bu = ui.new_child(egui::UiBuilder::new().max_rect(br));
-                        if button_sized(&mut bu, "Restaurar", None, Btn::Secondary, vec2(96.0, 28.0), true).clicked() {
+                        if button_sized(&mut bu, &tr!("modal.restore"), None, Btn::Secondary, vec2(96.0, 28.0), true).clicked() {
                             restore = Some((t.clone(), blocks.clone()));
                         }
                         let _ = vid;
@@ -309,11 +310,11 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         }
                     }
                     app.data_version += 1;
-                    app.toast("Versão restaurada");
+                    app.toast(tr!("toast.version_restored"));
                     keep = false;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if button(ui, "Fechar", Btn::Secondary, 34.0).clicked() {
+                    if button(ui, &tr!("common.close"), Btn::Secondary, 34.0).clicked() {
                         keep = false;
                     }
                 });
@@ -331,9 +332,9 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     ui.add(img);
                 });
                 ui.horizontal(|ui| {
-                    label(ui, &format!("{}% · role para ampliar", (*zoom * 100.0).round()), serif(12.0, W::Italic), p.muted);
+                    label(ui, &tr!("modal.zoom_hint", pct = (*zoom * 100.0).round()), serif(12.0, W::Italic), p.muted);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if button(ui, "Fechar", Btn::Secondary, 32.0).clicked() {
+                        if button(ui, &tr!("common.close"), Btn::Secondary, 32.0).clicked() {
                             keep = false;
                         }
                         if button(ui, "100%", Btn::Ghost, 32.0).clicked() {
@@ -344,9 +345,9 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             }
             Modal::CustomStudy { deck, kind, days, pct: pc, limit, query } => {
                 ui.set_width(480.0);
-                let scope = deck.map(|d| app.deck_path(d)).unwrap_or_else(|| "Todas as disciplinas".into());
-                title(ui, "Estudo personalizado", &format!("Monta uma sessão fora da fila do dia. Escopo: {scope}."));
-                let opts = ["Esquecidos nos últimos dias", "Revisar antes do vencimento", "Novos adicionados recentemente", "Cartões em risco (R baixa)", "Cartões marcados", "Busca personalizada"];
+                let scope = deck.map(|d| app.deck_path(d)).unwrap_or_else(|| tr!("review.all_subjects"));
+                title(ui, &tr!("custom.title"), &tr!("custom.subtitle", scope = scope));
+                let opts = ["custom.forgotten", "custom.ahead", "custom.new_added", "custom.at_risk", "custom.flagged", "custom.search"].map(|k| tr!(k));
                 for (i, o) in opts.iter().enumerate() {
                     let (r, resp) = ui.allocate_exact_size(vec2(432.0, 30.0), Sense::click());
                     if resp.hovered() {
@@ -356,7 +357,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     if *kind == i {
                         ui.painter().circle_filled(pos2(r.left() + 12.0, r.center().y), 4.0, p.accent);
                     }
-                    text(ui.painter(), pos2(r.left() + 28.0, r.center().y), Align2::LEFT_CENTER, o, serif(13.5, W::Regular), p.text2, 400.0);
+                    text(ui.painter(), pos2(r.left() + 28.0, r.center().y), Align2::LEFT_CENTER, o.as_str(), serif(13.5, W::Regular), p.text2, 400.0);
                     a11y(&resp, egui::accesskit::Role::RadioButton, o, Some(*kind == i));
                     if resp.clicked() {
                         *kind = i;
@@ -366,24 +367,24 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     ui.spacing_mut().item_spacing.x = 10.0;
                     match *kind {
                         0..=2 => {
-                            label(ui, if *kind == 1 { "Próximos" } else { "Últimos" }, serif(13.0, W::Regular), p.text2);
-                            number_field(ui, "days", days, "dias", 110.0);
+                            label(ui, &tr!(if *kind == 1 { "custom.next" } else { "custom.last" }), serif(13.0, W::Regular), p.text2);
+                            number_field(ui, "days", days, &tr!("custom.days"), 110.0);
                         }
                         3 => {
-                            label(ui, "R abaixo de", serif(13.0, W::Regular), p.text2);
+                            label(ui, &tr!("custom.r_below"), serif(13.0, W::Regular), p.text2);
                             number_field(ui, "pct", pc, "%", 90.0);
                         }
                         5 => {
-                            text_field(ui, query, "is:due tag:prova prop:r<0.8", 432.0, 36.0);
+                            text_field(ui, query, &tr!("custom.search_hint"), 432.0, 36.0);
                         }
                         _ => {}
                     }
                 });
                 ui.horizontal(|ui| {
-                    label(ui, "Máximo de cartões", serif(13.0, W::Regular), p.text2);
+                    label(ui, &tr!("custom.max_cards"), serif(13.0, W::Regular), p.text2);
                     number_field(ui, "limit", limit, "", 90.0);
                 });
-                let (ok, cancel) = actions(ui, "Estudar", false, true);
+                let (ok, cancel) = actions(ui, &tr!("nav.study"), false, true);
                 if cancel {
                     keep = false;
                 }
@@ -402,12 +403,12 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                             cards.retain(|c| c.queue != crate::srs::Queue::Suspended);
                             cards.truncate((*limit).max(1) as usize);
                             if cards.is_empty() {
-                                app.toast("Nenhum cartão corresponde a esse critério");
+                                app.toast(tr!("toast.no_cards_match"));
                             } else {
                                 let ids = cards.iter().map(|c| c.id).collect();
                                 keep = false;
                                 app.modal = None;
-                                review::start(app, review::Scope::Cards(ids, format!("Estudo personalizado · {}", opts[*kind])));
+                                review::start(app, review::Scope::Cards(ids, tr!("custom.session_label", kind = opts[*kind])));
                                 return;
                             }
                         }
@@ -421,12 +422,12 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             }
             Modal::NewPreset { name, from } => {
                 ui.set_width(420.0);
-                title(ui, "Novo preset", "Copia as opções do preset atual. Depois, escolha quais baralhos usam cada preset.");
-                let r = text_field(ui, name, "Ex.: Medicina", 372.0, 36.0);
+                title(ui, &tr!("modal.new_preset"), &tr!("modal.new_preset_text"));
+                let r = text_field(ui, name, &tr!("modal.preset_example"), 372.0, 36.0);
                 if !r.has_focus() && name.is_empty() {
                     r.request_focus();
                 }
-                let (ok, cancel) = actions(ui, "Criar", false, !name.trim().is_empty());
+                let (ok, cancel) = actions(ui, &tr!("common.create"), false, !name.trim().is_empty());
                 if cancel {
                     keep = false;
                 }
@@ -447,9 +448,9 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             }
             Modal::RenamePreset { id, name } => {
                 ui.set_width(420.0);
-                title(ui, "Renomear preset", "");
-                text_field(ui, name, "Nome", 372.0, 36.0);
-                let (ok, cancel) = actions(ui, "Salvar", false, !name.trim().is_empty());
+                title(ui, &tr!("modal.rename_preset"), "");
+                text_field(ui, name, &tr!("modal.name"), 372.0, 36.0);
+                let (ok, cancel) = actions(ui, &tr!("common.save"), false, !name.trim().is_empty());
                 if cancel {
                     keep = false;
                 }
@@ -465,7 +466,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             }
             Modal::MoveCards { ids, deck } => {
                 ui.set_width(460.0);
-                title(ui, &format!("Mover {} cartões", ids.len()), "Escolha o baralho de destino.");
+                title(ui, &tr_n!("modal.move_cards", ids.len()), &tr!("modal.pick_deck"));
                 let decks = app.decks.clone();
                 let cur = app.deck_path(*deck);
                 let color = app.subject_color_of_deck(*deck);
@@ -478,7 +479,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         }
                     }
                 });
-                let (ok, cancel) = actions(ui, "Mover", false, true);
+                let (ok, cancel) = actions(ui, &tr!("modal.move"), false, true);
                 if cancel {
                     keep = false;
                 }
@@ -493,12 +494,12 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             }
             Modal::AddTags { note_ids, tags } => {
                 ui.set_width(420.0);
-                title(ui, &format!("Adicionar tags a {} notas", note_ids.len()), "Separe por espaço. Prefixe com - para remover (ex.: -antiga).");
-                let r = text_field(ui, tags, "prova-p2 revisar", 372.0, 36.0);
+                title(ui, &tr_n!("modal.add_tags", note_ids.len()), &tr!("modal.add_tags_text"));
+                let r = text_field(ui, tags, &tr!("modal.tags_example"), 372.0, 36.0);
                 if !r.has_focus() && tags.is_empty() {
                     r.request_focus();
                 }
-                let (ok, cancel) = actions(ui, "Aplicar", false, !tags.trim().is_empty());
+                let (ok, cancel) = actions(ui, &tr!("modal.apply"), false, !tags.trim().is_empty());
                 if cancel {
                     keep = false;
                 }
@@ -546,7 +547,7 @@ pub fn import_csv(app: &mut App, subject: i64) {
     };
     let rows = parse_csv(&text);
     if rows.is_empty() {
-        app.toast("Arquivo vazio");
+        app.toast(tr!("toast.empty_file"));
         return;
     }
     let cols = rows.iter().map(|r| r.len()).max().unwrap_or(1);
@@ -596,13 +597,13 @@ pub fn parse_csv(text: &str) -> Vec<Vec<String>> {
 fn csv_ui(app: &mut App, ui: &mut Ui, imp: &mut CsvImport, keep: &mut bool) {
     let p = pal();
     let fname = imp.path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-    title(ui, "Importar CSV", &format!("{fname} · {} linhas", imp.rows.len()));
+    title(ui, &tr!("csv.title"), &tr_n!("csv.lines", imp.rows.len(), file = fname));
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         let kind = imp.kind;
-        select_field(ui, "csv_kind", kind.label(), None, 200.0, 36.0, |ui| {
+        select_field(ui, "csv_kind", &kind.label(), None, 200.0, 36.0, |ui| {
             for k in [NoteKind::Basic, NoteKind::BasicReversed, NoteKind::Cloze, NoteKind::TypeIn] {
-                if menu_item(ui, k.label(), k == kind).clicked() {
+                if menu_item(ui, &k.label(), k == kind).clicked() {
                     imp.kind = k;
                 }
             }
@@ -617,8 +618,8 @@ fn csv_ui(app: &mut App, ui: &mut Ui, imp: &mut CsvImport, keep: &mut bool) {
             }
         });
     });
-    checkbox(ui, &mut imp.header, "A primeira linha é cabeçalho");
-    caps_label(ui, "Colunas → campos");
+    checkbox(ui, &mut imp.header, &tr!("csv.header"));
+    caps_label(ui, &tr!("csv.columns"));
     let fields = imp.kind.field_names();
     let cols = imp.mapping.len();
     egui::ScrollArea::horizontal().show(ui, |ui| {
@@ -627,20 +628,20 @@ fn csv_ui(app: &mut App, ui: &mut Ui, imp: &mut CsvImport, keep: &mut bool) {
                 ui.vertical(|ui| {
                     ui.set_width(150.0);
                     let cur = match imp.mapping[c] {
-                        None => "Ignorar".to_owned(),
-                        Some(usize::MAX) => "Tags".to_owned(),
-                        Some(f) => fields.get(f).map(|s| s.to_string()).unwrap_or_else(|| "Ignorar".into()),
+                        None => tr!("csv.ignore"),
+                        Some(usize::MAX) => tr!("csv.tags"),
+                        Some(f) => fields.get(f).map(|s| tr!(s)).unwrap_or_else(|| tr!("csv.ignore")),
                     };
                     select_field(ui, ("csv_col", c), &cur, None, 150.0, 32.0, |ui| {
-                        if menu_item(ui, "Ignorar", imp.mapping[c].is_none()).clicked() {
+                        if menu_item(ui, &tr!("csv.ignore"), imp.mapping[c].is_none()).clicked() {
                             imp.mapping[c] = None;
                         }
                         for (fi, f) in fields.iter().enumerate() {
-                            if menu_item(ui, f, imp.mapping[c] == Some(fi)).clicked() {
+                            if menu_item(ui, &tr!(f), imp.mapping[c] == Some(fi)).clicked() {
                                 imp.mapping[c] = Some(fi);
                             }
                         }
-                        if menu_item(ui, "Tags", imp.mapping[c] == Some(usize::MAX)).clicked() {
+                        if menu_item(ui, &tr!("csv.tags"), imp.mapping[c] == Some(usize::MAX)).clicked() {
                             imp.mapping[c] = Some(usize::MAX);
                         }
                     });
@@ -652,7 +653,7 @@ fn csv_ui(app: &mut App, ui: &mut Ui, imp: &mut CsvImport, keep: &mut bool) {
             }
         });
     });
-    let (ok, cancel) = actions(ui, "Importar", false, imp.mapping.iter().any(|m| *m == Some(0)));
+    let (ok, cancel) = actions(ui, &tr!("csv.import"), false, imp.mapping.iter().any(|m| *m == Some(0)));
     if cancel {
         *keep = false;
     }
@@ -685,7 +686,7 @@ fn csv_ui(app: &mut App, ui: &mut Ui, imp: &mut CsvImport, keep: &mut bool) {
             }
         }
         app.changed();
-        app.toast(format!("{notes} notas importadas · {made} cartões"));
+        app.toast(tr!("toast.csv_imported", notes = notes, cards = made));
         let _ = imp.subject;
         *keep = false;
     }

@@ -133,7 +133,7 @@ pub fn parse(q: &str, decks: &[Deck], subjects: &[Subject], clock: &Clock, now: 
                 ids.sort_unstable();
                 ids.dedup();
                 if ids.is_empty() {
-                    out.errors.push(format!("Baralho não encontrado: {val}"));
+                    out.errors.push(crate::tr!("search.no_deck", name = val));
                     Some("0".into())
                 } else {
                     Some(format!("c.deck_id IN ({})", ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",")))
@@ -144,7 +144,7 @@ pub fn parse(q: &str, decks: &[Deck], subjects: &[Subject], clock: &Clock, now: 
                 let sids: Vec<i64> = subjects.iter().filter(|s| s.name.to_lowercase().starts_with(&name)).map(|s| s.id).collect();
                 let ids: Vec<String> = decks.iter().filter(|d| sids.contains(&d.subject_id)).map(|d| d.id.to_string()).collect();
                 if ids.is_empty() {
-                    out.errors.push(format!("Disciplina não encontrada: {val}"));
+                    out.errors.push(crate::tr!("search.no_subject", name = val));
                     Some("0".into())
                 } else {
                     Some(format!("c.deck_id IN ({})", ids.join(",")))
@@ -168,7 +168,7 @@ pub fn parse(q: &str, decks: &[Deck], subjects: &[Subject], clock: &Clock, now: 
                 "flagged" | "marked" | "marcado" | "marcados" => Some("c.flagged = 1".into()),
                 "leech" | "sanguessuga" => Some("c.leech = 1".into()),
                 other => {
-                    out.errors.push(format!("is:{other} desconhecido"));
+                    out.errors.push(crate::tr!("search.unknown", term = format!("is:{other}")));
                     None
                 }
             },
@@ -191,12 +191,12 @@ pub fn parse(q: &str, decks: &[Deck], subjects: &[Subject], clock: &Clock, now: 
                             Some(format!("c.state = 2 AND c.due {} {t}", if matches!(cmp, Cmp::Gt | Cmp::Ge) { ">=" } else { "<" }))
                         }
                         _ => {
-                            out.errors.push(format!("prop:{field} desconhecido"));
+                            out.errors.push(crate::tr!("search.unknown", term = format!("prop:{field}")));
                             None
                         }
                     },
                     None => {
-                        out.errors.push(format!("Comparação inválida em {raw}"));
+                        out.errors.push(crate::tr!("search.bad_compare", term = raw));
                         None
                     }
                 }
