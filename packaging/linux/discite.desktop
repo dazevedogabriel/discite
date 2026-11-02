@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Discite
+GenericName=Study notebook and flashcards
+GenericName[pt_BR]=Caderno de estudos e flashcards
+Comment=Notes and spaced-repetition flashcards
+Comment[pt_BR]=Notas e flashcards com repetição espaçada
+Exec=discite
+Icon=discite
+Terminal=false
+Categories=Education;Office;
+StartupWMClass=discite

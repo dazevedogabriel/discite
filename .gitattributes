@@ -1,0 +1,3 @@
+# Scripts e atalhos do Linux sempre com fim de linha Unix, mesmo vindos do Windows.
+*.sh text eol=lf
+*.desktop text eol=lf
