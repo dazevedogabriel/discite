@@ -16,7 +16,7 @@
   <img alt="Scheduling with FSRS-6" src="https://img.shields.io/badge/scheduler-FSRS--6-8b8cf8">
   <img alt="Storage in SQLite" src="https://img.shields.io/badge/storage-SQLite-4a90c8?logo=sqlite&logoColor=white">
   <img alt="Local AI with llama.cpp" src="https://img.shields.io/badge/AI-local%20·%20llama.cpp-6f6af8">
-  <img alt="Windows and macOS" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-555">
+  <img alt="Windows, macOS and Linux" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555">
 </p>
 
 <p align="center">
@@ -115,8 +115,8 @@ your data lives in one SQLite file on your machine.
 
 - A command palette for every action, plus dark and light themes based on a
   Claude Design canvas. Literata and JetBrains Mono fonts are built in.
-- On Windows, a custom title bar. On macOS, the native one, with shortcuts
-  shown with ⌘.
+- On Windows and Linux, a custom title bar. On macOS, the native one, with
+  shortcuts shown with ⌘.
 - English and Brazilian Portuguese are built in. More languages can be added
   as plain XML files (see [Translations](#-translations)).
 
@@ -205,10 +205,12 @@ quantized to Q4_K_M by [Unsloth](https://huggingface.co/unsloth).
 
 ### Speed
 
-The AI uses the graphics card when there is one: **Vulkan** on Windows (any
-recent NVIDIA, AMD or Intel GPU, through the driver you already have) and
-**Metal** on Apple Silicon Macs. Otherwise it runs on the processor. With the
-recommended model, ten cards from a typical page take:
+The AI uses the graphics card when there is one: **Vulkan** on Windows and
+Linux (any recent NVIDIA, AMD or Intel GPU, through the driver you already have)
+and **Metal** on Apple Silicon Macs. Intel Macs always use the processor, since
+llama.cpp's Metal backend is unreliable on their GPUs. If the GPU fails to load
+the model, Discite retries on the processor by itself. With the recommended
+model, ten cards from a typical page take:
 
 | Hardware | Time |
 |---|---|
@@ -251,6 +253,10 @@ embedded llama.cpp, [CMake](https://cmake.org) and libclang
   [Vulkan SDK](https://vulkan.lunarg.com/sdk/home), used only to compile the GPU
   shaders.
 - **macOS:** the Xcode command line tools and CMake (`brew install cmake`).
+- **Linux** (Debian/Ubuntu names): `build-essential cmake ninja-build clang
+  libclang-dev pkg-config libvulkan-dev glslc libxkbcommon-dev libwayland-dev
+  libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+  libfontconfig1-dev`.
 
 ```bash
 git clone https://github.com/dazevedogabriel/Discite.git discite
@@ -258,17 +264,24 @@ cd discite
 cargo build --release
 ```
 
-Run `target/release/discite.exe` (Windows) or `target/release/discite` (macOS).
-It needs nothing installed next to it.
+Run `target/release/discite.exe` (Windows) or `target/release/discite` (macOS
+and Linux). It needs nothing installed next to it; on Linux, the Vulkan loader
+(`libvulkan1`) that every desktop already has.
 
 > **Windows and long paths.** Compiling the Vulkan shaders creates very deep
 > folders. If the build fails with `C1083` or "file name too long", build into
 > a short folder: `set CARGO_TARGET_DIR=C:\t` (the GitHub workflow does this).
 
-- **Your data** lives in `%APPDATA%\Discite` on Windows and in
-  `~/Library/Application Support/Discite` on macOS. It holds `discite.db`
-  (SQLite), `media/` with the images, `backups/` with automatic backups and
-  `models/` with the AI models you downloaded.
+- **Your data** lives in `%APPDATA%\Discite` on Windows,
+  `~/Library/Application Support/Discite` on macOS and `~/.local/share/Discite`
+  on Linux. It holds `discite.db` (SQLite), `media/` with the images, `backups/`
+  with automatic backups, `models/` with the AI models you downloaded and
+  `logs/` with the diagnostic log.
+- **Something went wrong?** **Settings → Data → Show diagnostic log** (also in
+  the command palette) shows what Discite recorded in this session and in the
+  previous one: AI steps, the GPU it found, llama.cpp warnings, errors and
+  crashes. The previous session is kept so a crash can still be read on the
+  next launch. Nothing is sent anywhere; copy it into an issue.
   To try things without touching your data, point the `DISCITE_DATA`
   environment variable at another folder.
 - **Sample content.** On an empty database, the dashboard offers to load an
@@ -302,17 +315,21 @@ On macOS, Ctrl is ⌘.
 
 ## 📦 Releases
 
-Two GitHub Actions workflows build the app for both platforms:
+Two GitHub Actions workflows build the app for the three platforms:
 
-- **[`build.yml`](.github/workflows/build.yml)** builds and tests on Windows x64
-  and macOS universal (Apple Silicon + Intel, macOS 10.15 or newer). It runs on
-  every push to `main`, on pull requests, and on demand (*Actions → Build → Run
-  workflow*). The packages are attached to the run:
+- **[`build.yml`](.github/workflows/build.yml)** builds and tests on Windows x64,
+  Linux x64 (Ubuntu 24.04) and macOS universal (Apple Silicon + Intel, macOS
+  10.15 or newer). It runs on every push to `main`, on pull requests, and on
+  demand (*Actions → Build → Run workflow*). The packages are attached to the run:
   - `Discite-<version>-windows-x64.zip` with `Discite.exe`;
+  - `Discite-<version>-linux-x64.tar.gz` with the `discite` executable, its
+    icon, a `.desktop` entry and `install.sh` (installs to `~/.local`, no sudo).
+    Built on Ubuntu 24.04, so it needs glibc 2.39 or newer: Ubuntu 24.04+,
+    Debian 13, Fedora 40+, Arch and other current distributions;
   - `Discite-<version>-macos-universal.zip` with `Discite.app`.
 - **[`release.yml`](.github/workflows/release.yml)** publishes a GitHub release
-  with both packages when a `v*` tag is pushed. The tag must match `version` in
-  `Cargo.toml`:
+  with the three packages when a `v*` tag is pushed. The tag must match
+  `version` in `Cargo.toml`:
 
   ```bash
   git tag v0.1.0

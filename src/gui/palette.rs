@@ -31,6 +31,7 @@ enum Cmd {
     CustomStudy,
     Browser(String),
     AiCards,
+    Log,
 }
 
 struct Item {
@@ -83,6 +84,7 @@ fn items(app: &App, q: &str) -> Vec<Item> {
     push(tr!("palette.custom_study"), "", "palette.actions", None, Cmd::CustomStudy);
     push(tr!("app.toggle_theme"), "", "palette.actions", None, Cmd::ToggleTheme);
     push(tr!("palette.backup_now"), "", "palette.actions", None, Cmd::Backup);
+    push(tr!("log.open"), "", "palette.actions", None, Cmd::Log);
     push(tr!("palette.go_dashboard"), "01", "palette.navigate", None, Cmd::Go(Screen::Dashboard));
     push(tr!("palette.go_stats"), "02", "palette.navigate", None, Cmd::Go(Screen::Stats));
     push(tr!("palette.go_cards"), "03", "palette.navigate", None, Cmd::Go(Screen::Browser));
@@ -130,6 +132,7 @@ fn run(app: &mut App, cmd: Cmd) {
         }
         Cmd::CustomStudy => app.modal = Some(super::modals::Modal::custom_study(None)),
         Cmd::AiCards => super::ai::open(app, super::ai::Scope::Page),
+        Cmd::Log => super::logview::open(app),
         Cmd::Browser(q) => {
             app.browser.query = q;
             app.browser.dirty = true;

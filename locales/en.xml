@@ -799,6 +799,8 @@
   <string key="ai.generate_more">Generate more</string>
   <string key="ai.truncated">This page is long: only its beginning was sent to the AI. Select a passage to get cards about the rest.</string>
   <string key="ai.status_need_model">Download a model to start</string>
+  <string key="ai.status_ready">Choose how many cards and the type, then Generate</string>
+  <string key="ai.empty_ready">Pick how many cards and which type above, then click Generate. Nothing is created until you add the suggestions you want.</string>
   <string key="ai.status_loading">Loading {model}…</string>
   <string key="ai.status_reading">Reading your notes… {pct}</string>
   <plural key="ai.status_writing"><one>Writing… {n} card so far</one><other>Writing… {n} cards so far</other></plural>
@@ -842,4 +844,16 @@
   <string key="ai.gpu_none">No compatible graphics card found: the AI will use the processor (slower).</string>
   <string key="ai.gpu_looking">Looking for a graphics card…</string>
   <string key="ai.models_folder">Models folder</string>
+
+  <!-- Diagnostic log -->
+  <string key="log.row">Diagnostic log</string>
+  <string key="log.open">Show diagnostic log</string>
+  <string key="log.hint">What Discite recorded in this session and in the previous one (AI steps, errors). Copy it to report a problem.</string>
+  <string key="log.title">Diagnostic log</string>
+  <string key="log.current">This session</string>
+  <string key="log.previous">Previous session</string>
+  <string key="log.copy">Copy all</string>
+  <string key="log.copied">Log copied</string>
+  <string key="log.refresh">Refresh</string>
+  <string key="log.empty">Nothing recorded here yet.</string>
 </language>

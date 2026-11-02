@@ -5,6 +5,7 @@
 mod ai;
 mod cards;
 mod db;
+mod diag;
 mod gui;
 mod i18n;
 mod media;
@@ -14,7 +15,9 @@ mod srs;
 mod stats;
 
 fn main() {
+    diag::init();
     if let Err(e) = gui::run() {
+        diag::error(format!("{e:#}"));
         #[cfg(windows)]
         message_box(&format!("{e:#}"));
         #[cfg(not(windows))]

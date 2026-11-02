@@ -8,6 +8,7 @@ mod ai;
 mod browser;
 mod charts;
 mod dashboard;
+mod logview;
 mod modals;
 mod note_editor;
 mod page;
@@ -44,6 +45,8 @@ pub fn run() -> Result<()> {
     }
     let viewport = egui::ViewportBuilder::default()
         .with_title("Discite")
+        // No Linux, liga a janela ao atalho discite.desktop (ícone na barra de tarefas).
+        .with_app_id("discite")
         .with_inner_size([1280.0, 800.0])
         .with_min_inner_size([1024.0, 640.0])
         .with_icon(window_icon());
@@ -167,6 +170,7 @@ pub struct App {
     /// Arquivos soltos na janela neste quadro.
     pub dropped: Vec<std::path::PathBuf>,
     pub ai: ai::AiState,
+    pub log_view: Option<logview::LogView>,
 }
 
 impl App {
@@ -207,6 +211,7 @@ impl App {
             pasted_image: None,
             dropped: vec![],
             ai: Default::default(),
+            log_view: None,
             cfg,
         };
         let _ = app.db.unbury();
@@ -361,7 +366,9 @@ impl App {
     }
 
     pub fn error(&mut self, e: impl std::fmt::Display) {
-        self.toasts.push((format!("{e:#}"), true, Instant::now()));
+        let msg = format!("{e:#}");
+        crate::diag::error(&msg);
+        self.toasts.push((msg, true, Instant::now()));
     }
 
     /// Registra uma mudança no banco: invalida caches e recalcula contagens.
@@ -502,7 +509,7 @@ impl App {
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
         let typing = ctx.memory(|m| m.focused().is_some()) && ctx.egui_wants_keyboard_input();
-        let overlay = self.modal.is_some() || self.note_editor.is_some() || self.palette.is_some() || self.ai.review.is_some();
+        let overlay = self.modal.is_some() || self.note_editor.is_some() || self.palette.is_some() || self.ai.review.is_some() || self.log_view.is_some();
         let cmd = |k: Key| ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, k));
         let cmd_shift = |k: Key| ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, k));
         if cmd(Key::K) {
@@ -953,6 +960,7 @@ impl eframe::App for App {
 
         note_editor::show(self, &ctx);
         ai::show(self, &ctx);
+        logview::show(self, &ctx);
         modals::show(self, &ctx);
         palette::show(self, &ctx);
         toasts(self, &ctx);

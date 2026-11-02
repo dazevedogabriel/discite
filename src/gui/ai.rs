@@ -37,6 +37,8 @@ pub enum Scope {
 #[derive(Clone, Debug, PartialEq)]
 enum Status {
     NeedModel,
+    /// Modelo pronto, esperando o usuário clicar em Gerar.
+    Ready,
     Loading,
     Reading(f32),
     Writing(usize),
@@ -72,7 +74,6 @@ pub struct Review {
     truncated: bool,
     /// Pouco conteúdo: quantos cartões foram pedidos de fato.
     capped: Option<u32>,
-    first: bool,
 }
 
 const COUNTS: [u32; 3] = [5, 10, 15];
@@ -105,7 +106,6 @@ pub fn open(app: &mut App, scope: Scope) {
         existing: vec![],
         truncated: false,
         capped: None,
-        first: true,
     });
 }
 
@@ -248,15 +248,11 @@ fn valid(s: &Suggestion) -> bool {
 pub fn show(app: &mut App, ctx: &egui::Context) {
     let Some(mut r) = app.ai.review.take() else { return };
     poll(&mut r);
-    let model_ready = models::is_installed(selected_model(app));
-    // Primeira abertura (ou modelo acabou de baixar): começa sozinho.
-    let auto_start = (r.first || r.status == Status::NeedModel) && model_ready && r.job.is_none() && r.items.is_empty();
-    r.first = false;
-    app.ai.review = Some(r);
-    if auto_start {
-        start(app, ctx);
+    // Nada começa sozinho: com o modelo pronto (inclusive logo depois de
+    // baixar), a janela espera o usuário escolher as opções e clicar em Gerar.
+    if r.status == Status::NeedModel && models::is_installed(selected_model(app)) {
+        r.status = Status::Ready;
     }
-    let Some(mut r) = app.ai.review.take() else { return };
 
     let p = pal();
     let screen = ctx.content_rect();
@@ -402,8 +398,10 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
                 r.status = Status::Stopped;
             }
         } else if !need_model {
-            let label = tr!(if r.items.is_empty() { "ai.generate" } else { "ai.generate_more" });
-            if button(ui, &label, Btn::Secondary, 32.0).clicked() {
+            // Sem sugestões ainda, Gerar é a ação principal da janela.
+            let first = r.items.is_empty();
+            let label = tr!(if first { "ai.generate" } else { "ai.generate_more" });
+            if button(ui, &label, if first { Btn::Primary } else { Btn::Secondary }, 32.0).clicked() {
                 *regenerate = true;
             }
         }
@@ -447,6 +445,7 @@ fn status_line(app: &App, r: &Review, ui: &mut Ui) {
     let p = pal();
     let (s, color) = match &r.status {
         Status::NeedModel => (tr!("ai.status_need_model"), p.muted),
+        Status::Ready => (tr!("ai.status_ready"), p.muted),
         Status::Loading => (tr!("ai.status_loading", model = selected_model(app).name), p.muted),
         Status::Reading(f) => (tr!("ai.status_reading", pct = pct(*f, 0)), p.muted),
         Status::Writing(n) => (tr_n!("ai.status_writing", *n), p.accent),
@@ -575,6 +574,7 @@ fn empty_state(r: &Review, ui: &mut Ui) {
     let s = match &r.status {
         Status::Failed(_) => tr!("ai.empty_failed"),
         Status::Done { .. } => tr!("ai.empty_done"),
+        Status::Ready => tr!("ai.empty_ready"),
         _ => tr!("ai.empty"),
     };
     ui.add_space(40.0);

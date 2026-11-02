@@ -791,6 +791,8 @@
   <string key="ai.generate_more">Gerar mais</string>
   <string key="ai.truncated">Esta página é longa: só o começo foi mandado para a IA. Selecione um trecho para ter cartões sobre o resto.</string>
   <string key="ai.status_need_model">Baixe um modelo para começar</string>
+  <string key="ai.status_ready">Escolha a quantidade e o tipo, depois clique em Gerar</string>
+  <string key="ai.empty_ready">Escolha acima quantos cartões e de que tipo, depois clique em Gerar. Nada é criado até você adicionar as sugestões que quiser.</string>
   <string key="ai.status_loading">Carregando o {model}…</string>
   <string key="ai.status_reading">Lendo suas notas… {pct}</string>
   <plural key="ai.status_writing"><one>Escrevendo… {n} cartão até agora</one><other>Escrevendo… {n} cartões até agora</other></plural>
@@ -834,4 +836,16 @@
   <string key="ai.gpu_none">Nenhuma placa de vídeo compatível: a IA vai usar o processador (mais lento).</string>
   <string key="ai.gpu_looking">Procurando a placa de vídeo…</string>
   <string key="ai.models_folder">Pasta dos modelos</string>
+
+  <!-- Diagnostic log -->
+  <string key="log.row">Log de diagnóstico</string>
+  <string key="log.open">Ver log de diagnóstico</string>
+  <string key="log.hint">O que o Discite registrou nesta sessão e na anterior (passos da IA, erros). Copie para relatar um problema.</string>
+  <string key="log.title">Log de diagnóstico</string>
+  <string key="log.current">Esta sessão</string>
+  <string key="log.previous">Sessão anterior</string>
+  <string key="log.copy">Copiar tudo</string>
+  <string key="log.copied">Log copiado</string>
+  <string key="log.refresh">Atualizar</string>
+  <string key="log.empty">Nada registrado aqui ainda.</string>
 </language>

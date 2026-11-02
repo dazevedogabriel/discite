@@ -53,6 +53,9 @@ jobs:
 
             - **Windows:** `Discite-…-windows-x64.zip`. Extract it and run `Discite.exe`.
             - **macOS** (Apple Silicon and Intel, macOS 10.15 or newer): `Discite-…-macos-universal.zip`. Extract it and drag `Discite.app` to Applications.
+            - **Linux** (x64; Ubuntu 24.04+, Debian 13, Fedora 40+, Arch or newer): `Discite-…-linux-x64.tar.gz`. Extract it and run `./discite`, or run `./install.sh` to add it to your applications menu (no sudo needed).
+
+            Something went wrong? **Settings → Data → Show diagnostic log** shows what Discite recorded in this session and in the previous one. Copy it into an issue.
 
             ### Opening it on macOS for the first time
 

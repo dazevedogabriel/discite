@@ -96,6 +96,11 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
                     open_folder(&app.db.root);
                 }
             });
+            row(ui, &tr!("log.row"), |ui| {
+                if button(ui, &tr!("log.open"), Btn::Secondary, 32.0).on_hover_text(tr!("log.hint")).clicked() {
+                    super::logview::open(app);
+                }
+            });
             row(ui, &tr!("settings.orphans"), |ui| {
                 if button(ui, &tr!("settings.clean_orphans"), Btn::Secondary, 32.0).clicked() {
                     match app.db.orphan_media() {

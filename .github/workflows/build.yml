@@ -79,6 +79,59 @@ jobs:
           path: Discite-*-windows-x64.zip
           if-no-files-found: error
 
+  linux:
+    name: Linux (x64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # CMake, Ninja e libclang para o llama.cpp; Vulkan (cabeçalhos e o glslc,
+      # que compila os shaders) para a IA usar a GPU; X11/Wayland e fontconfig
+      # para a janela do egui.
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang libclang-dev pkg-config \
+            libvulkan-dev glslc spirv-headers \
+            libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev libfontconfig1-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        env:
+          CMAKE_GENERATOR: Ninja
+        run: cargo test --release --locked
+
+      - name: Build
+        env:
+          CMAKE_GENERATOR: Ninja
+        run: cargo build --release --locked
+
+      # Um .tar.gz com o executável, o ícone e um atalho .desktop.
+      - name: Package
+        run: |
+          set -euo pipefail
+          VERSION=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["packages"][0]["version"])')
+          DIR=dist/Discite
+          mkdir -p "$DIR"
+          cp target/release/discite "$DIR/discite"
+          ICON=$(ls -t $(find target/release/build -name icon-256.png) | head -n 1)
+          cp "$ICON" "$DIR/discite.png"
+          cp packaging/linux/discite.desktop "$DIR/"
+          cp packaging/linux/install.sh "$DIR/"
+          chmod +x "$DIR/discite" "$DIR/install.sh"
+          tar -C dist -czf "Discite-$VERSION-linux-x64.tar.gz" Discite
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: discite-linux
+          path: Discite-*-linux-x64.tar.gz
+          if-no-files-found: error
+
   macos:
     name: macOS (universal)
     runs-on: macos-14

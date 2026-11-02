@@ -222,6 +222,11 @@ impl Suggestion {
 /// ("1. Prófase — …", "- Cones: …", "### …").
 fn unlist(s: &str) -> String {
     let t = s.trim();
+    // O número da linha das notas ("[5] …"), que o modelo às vezes copia junto.
+    let t = match t.strip_prefix('[').and_then(|r| r.split_once(']')) {
+        Some((n, rest)) if !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()) => rest.trim_start(),
+        _ => t,
+    };
     let t = t.trim_start_matches('#').trim_start();
     let t = t.strip_prefix("- ").unwrap_or(t);
     let digits = t.chars().take_while(char::is_ascii_digit).count();
@@ -343,6 +348,15 @@ mod tests {
         assert_eq!(fix_cloze("Os {{c1::cones}} veem cores."), "Os {{c1::cones}} veem cores.");
         // Termo que não aparece antes: fica como veio.
         assert_eq!(fix_cloze("Camada sensorial do olho. {{c1::retina}}"), "Camada sensorial do olho. {{c1::retina}}");
+    }
+
+    #[test]
+    fn unlist_drops_markers_copied_from_the_notes() {
+        assert_eq!(unlist("[5] 1. Anaphase — sister chromatids separate."), "Anaphase — sister chromatids separate.");
+        assert_eq!(unlist("- Cones: visão de cores"), "Cones: visão de cores");
+        assert_eq!(unlist("### Fases"), "Fases");
+        // Colchetes que não são número de linha ficam.
+        assert_eq!(unlist("[ATP] é a moeda energética"), "[ATP] é a moeda energética");
     }
 
     #[test]
