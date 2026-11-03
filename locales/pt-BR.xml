@@ -215,6 +215,10 @@
   <string key="page.history">Histórico</string>
   <string key="page.focus">Foco</string>
   <string key="page.exit_focus">Sair do foco</string>
+  <string key="page.view_formatted">Formatado</string>
+  <string key="page.view_markdown">Markdown</string>
+  <string key="page.markdown_hint">Editando a página em Markdown. As mudanças aparecem na hora no texto formatado. Ctrl+Shift+M volta.</string>
+  <string key="page.markdown_empty">Escreva em Markdown: ## título, - lista, **negrito**, [[link]]…</string>
   <string key="page.editing">Editando…</string>
   <string key="page.saved">Salvo</string>
   <string key="page.remove_tag">Remover tag</string>
@@ -269,7 +273,6 @@
   <string key="page.due_in">em {interval}</string>
   <plural key="page.study_these"><one>Estudar este {n}</one><other>Estudar estes {n}</other></plural>
   <string key="page.cards_of">Cartões de “{title}”</string>
-  <string key="page.md_tip">Dica:</string>
   <string key="page.md_images_suffix">_imagens</string>
   <string key="page.imported_title">Importada</string>
 
@@ -772,6 +775,11 @@
   <string key="ai.button">Gerar com IA</string>
   <string key="ai.button_tip">Sugere cartões a partir desta página (ou do texto selecionado) com a IA local · Ctrl Shift G</string>
   <string key="ai.from_this_block">Cartões com IA deste bloco</string>
+  <plural key="ai.from_picked_blocks"><one>Cartões com IA do {n} bloco selecionado</one><other>Cartões com IA dos {n} blocos selecionados</other></plural>
+  <plural key="ai.n_blocks"><one>{n} bloco</one><other>{n} blocos</other></plural>
+  <plural key="page.blocks_picked"><one>{n} bloco selecionado</one><other>{n} blocos selecionados</other></plural>
+  <string key="page.clear_pick">Limpar</string>
+  <string key="page.grip_tip">Clique: menu do bloco · Arraste: mover · Shift+clique ou Ctrl+clique: escolher vários blocos</string>
   <string key="ai.palette">Gerar cartões com IA desta página</string>
   <string key="ai.title">Cartões sugeridos pela IA</string>
   <string key="ai.scope_block">{title} · um bloco</string>
@@ -807,7 +815,6 @@
   <string key="ai.quote">Fonte: “{text}”</string>
   <string key="ai.not_in_notes">Não encontrei isto na sua nota: confira antes de adicionar.</string>
   <string key="ai.not_in_notes_words">Não encontrei isto na sua nota ({words}): confira antes de adicionar.</string>
-  <plural key="ai.capped"><one>Esta página tem pouco conteúdo, então pedi no máximo {n} cartão à IA.</one><other>Esta página tem pouco conteúdo, então pedi no máximo {n} cartões à IA.</other></plural>
   <string key="ai.duplicate">Parece um cartão que esta página já tem. Desmarcado.</string>
   <string key="ai.empty">As sugestões vão aparecer aqui.</string>
   <string key="ai.empty_done">Nenhum cartão aproveitável desta vez: a IA não achou nada novo que pudesse comprovar com a sua nota. Tente outro trecho, o outro tipo de cartão ou um modelo maior.</string>

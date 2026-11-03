@@ -7,6 +7,7 @@
 //! Tab recua listas, "/" abre o menu de blocos e `# `, `- `, `1. `, `[] `,
 //! `> `, ```` ``` ```` e `---` viram o bloco correspondente.
 
+use super::math;
 use super::richtext::{self, Look};
 use super::theme::*;
 use super::widgets::*;
@@ -40,6 +41,17 @@ pub struct PageEditor {
     tag_edit: Option<String>,
     /// Pedido de cartões com IA feito neste quadro (aberto depois que o editor volta para o App).
     ai_request: Option<super::ai::Scope>,
+    /// Modo Markdown: o texto da página que está sendo editado no lugar dos blocos.
+    source: Option<String>,
+    /// A lateral direita está à vista: os botões de cartão ficam nela, não na barra.
+    aside_shown: bool,
+    /// Ações pedidas pela lateral, aplicadas pelo editor no quadro seguinte.
+    queued: Vec<Action>,
+    /// Blocos escolhidos com Shift/Ctrl+clique no ⠿ (para a IA).
+    picked: Vec<i64>,
+    pick_anchor: Option<i64>,
+    /// Trecho selecionado no modo Markdown (em caracteres).
+    source_sel: Option<(usize, usize)>,
 }
 
 #[derive(Default)]
@@ -109,6 +121,12 @@ impl PageEditor {
             saved_at: None,
             tag_edit: None,
             ai_request: None,
+            source: None,
+            aside_shown: false,
+            queued: Vec::new(),
+            picked: Vec::new(),
+            pick_anchor: None,
+            source_sel: None,
         })
     }
 
@@ -162,6 +180,57 @@ impl PageEditor {
     fn focus_block(&mut self, id: i64, a: usize, b: usize) {
         self.pending = Some((id, a, b));
     }
+
+    /// Alterna entre o texto formatado e o Markdown da página.
+    fn toggle_source(&mut self) {
+        self.source = match self.source {
+            Some(_) => None,
+            None => Some(body_markdown(&self.blocks, "")),
+        };
+        self.focus = None;
+        self.sel = None;
+        self.slash = None;
+        self.drag = None;
+        self.picked.clear();
+        self.source_sel = None;
+    }
+
+    /// Os blocos escolhidos, na ordem da página.
+    fn picked_in_order(&self) -> Vec<i64> {
+        self.blocks.iter().filter(|b| self.picked.contains(&b.id)).map(|b| b.id).collect()
+    }
+
+    /// Relê o Markdown editado e troca os blocos, mantendo os ids dos que continuam.
+    fn apply_source(&mut self) {
+        let Some(src) = &self.source else { return };
+        let (_, mut blocks) = parse_markdown(src, false, str::to_owned);
+        if blocks.is_empty() {
+            blocks.push(Block::new(BlockKind::Paragraph, ""));
+        }
+        keep_ids(&self.blocks, &mut blocks);
+        self.blocks = blocks;
+        self.touch();
+    }
+}
+
+fn source_id(page: i64) -> Id {
+    Id::unique(("page_source", page))
+}
+
+/// Põe `s` no Markdown, numa linha própria, onde está o cursor (ou no fim).
+fn source_insert(ed: &mut PageEditor, ctx: &egui::Context, s: &str) {
+    let Some(src) = &mut ed.source else { return };
+    let at = egui::TextEdit::load_state(ctx, source_id(ed.meta.id)).and_then(|st| st.cursor.char_range()).map(|r| r.primary.index);
+    let byte = at.and_then(|c| src.char_indices().nth(c.into()).map(|(b, _)| b)).unwrap_or(src.len());
+    // Começo da linha seguinte, para não partir uma linha no meio.
+    let byte = src[byte..].find('\n').map_or(src.len(), |n| byte + n + 1);
+    let mut line = String::new();
+    if byte > 0 && !src[..byte].ends_with('\n') {
+        line.push('\n');
+    }
+    line.push_str(&format!("\n{s}\n\n"));
+    src.insert_str(byte, &line);
+    ed.apply_source();
 }
 
 fn block_id(id: i64) -> Id {
@@ -196,6 +265,9 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64) {
     if app.page.as_ref().is_none_or(|e| e.meta.subject_id != sid) {
         empty_notebook(app, &mut mu, main, sid);
         return;
+    }
+    if let Some(ed) = app.page.as_mut() {
+        ed.aside_shown = aside_w > 0.0;
     }
     editor(app, &mut mu, main, sid);
     if aside_w > 0.0 {
@@ -388,7 +460,7 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
     ui.painter().hline(top.x_range(), top.bottom() - 0.5, Stroke::new(1.0, p.line));
     let crumb = tr!("page.breadcrumb", subject = subject);
     let r1 = text(ui.painter(), pos2(top.left() + 20.0, top.center().y), Align2::LEFT_CENTER, &crumb, serif(13.0, W::Regular), p.muted, 400.0);
-    text(ui.painter(), pos2(r1.right(), top.center().y), Align2::LEFT_CENTER, &ed.title, serif(13.0, W::Regular), p.text2, (top.width() - r1.width() - 330.0).max(60.0));
+    text(ui.painter(), pos2(r1.right(), top.center().y), Align2::LEFT_CENTER, &ed.title, serif(13.0, W::Regular), p.text2, (top.width() - r1.width() - 510.0).max(60.0));
     let mut tu = ui.new_child(egui::UiBuilder::new().max_rect(top.shrink2(vec2(20.0, 0.0))).layout(egui::Layout::right_to_left(egui::Align::Center)));
     tu.spacing_mut().item_spacing.x = 4.0;
     if button(&mut tu, &tr!("page.export"), Btn::Ghost, 30.0).clicked() {
@@ -403,6 +475,13 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
     if button(&mut tu, &tr!(if ed.focus_mode { "page.exit_focus" } else { "page.focus" }), Btn::Ghost, 30.0).clicked() {
         ed.focus_mode = !ed.focus_mode;
     }
+    tu.add_space(4.0);
+    // Texto formatado ou o Markdown por trás dele (Ctrl+Shift+M).
+    let mut view = ed.source.is_some() as usize;
+    let (formatted, markdown) = (tr!("page.view_formatted"), tr!("page.view_markdown"));
+    if segmented(&mut tu, &[&formatted, &markdown], &mut view, 24.0, false) || ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::M)) {
+        ed.toggle_source();
+    }
     tu.add_space(6.0);
     let (status, col) = if ed.dirty { (tr!("page.editing"), p.hard) } else { (tr!("page.saved"), p.good) };
     let status = status.as_str();
@@ -415,7 +494,12 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
     ui.painter().rect_filled(bar, 0, p.card);
     ui.painter().hline(bar.x_range(), bar.bottom() - 0.5, Stroke::new(1.0, p.line));
     let mut actions: Vec<Action> = Vec::new();
-    toolbar(app, &mut ed, ui, bar, &mut actions);
+    if ed.source.is_some() {
+        text(ui.painter(), pos2(bar.left() + 20.0, bar.center().y), Align2::LEFT_CENTER, &keys(&tr!("page.markdown_hint")), serif(12.5, W::Italic), p.muted, bar.width() - 40.0);
+    } else {
+        toolbar(app, &mut ed, ui, bar, &mut actions);
+    }
+    actions.append(&mut ed.queued);
 
     // ── Conteúdo ──
     let body = Rect::from_min_max(pos2(rect.left(), bar.bottom()), rect.max);
@@ -431,6 +515,10 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
                 ui.set_width(col_w);
                 ui.spacing_mut().item_spacing.y = 10.0;
                 page_head(app, &mut ed, ui, col_w);
+                if ed.source.is_some() {
+                    source_editor(&mut ed, ui, col_w);
+                    return;
+                }
                 let n = ed.blocks.len();
                 let mut numbering = Vec::with_capacity(n);
                 let mut counters = [0u32; 8];
@@ -450,7 +538,11 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
                     }
                 }
                 for i in 0..n {
+                    let bg = ui.painter().add(egui::Shape::Noop);
                     let r = block_ui(app, &mut ed, ui, i, col_w, numbering[i], &mut actions);
+                    if ed.picked.contains(&ed.blocks[i].id) {
+                        ui.painter().set(bg, egui::Shape::rect_filled(r.expand2(vec2(10.0, 4.0)), 6, soft(p.accent, 0.14)));
+                    }
                     block_rects.push((ed.blocks[i].id, r));
                 }
                 // Área clicável no fim: cria/foca um parágrafo.
@@ -497,16 +589,24 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
     // Imagem colada / solta.
     let focused_idx = ed.focus.and_then(|id| ed.idx(id)).filter(|_| ui.ctx().memory(|m| m.focused().is_some()));
     if let Some(name) = app.pasted_image.take() {
+        if ed.source.is_some() {
+            source_insert(&mut ed, ui.ctx(), &rich::image_markup(&name));
+        } else {
         let at = focused_idx.unwrap_or(ed.blocks.len().saturating_sub(1));
         insert_image_block(&mut ed, at, name);
+        }
     }
     for path in std::mem::take(&mut app.dropped) {
         if crate::media::is_image_path(&path) {
             match crate::media::store_file(&app.db.media_dir(), &path) {
                 Ok(s) => {
                     let _ = app.db.add_media(&s);
-                    let at = focused_idx.unwrap_or(ed.blocks.len().saturating_sub(1));
-                    insert_image_block(&mut ed, at, s.file_name);
+                    if ed.source.is_some() {
+                        source_insert(&mut ed, ui.ctx(), &rich::image_markup(&s.file_name));
+                    } else {
+                        let at = focused_idx.unwrap_or(ed.blocks.len().saturating_sub(1));
+                        insert_image_block(&mut ed, at, s.file_name);
+                    }
                 }
                 Err(e) => app.error(e),
             }
@@ -518,6 +618,9 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
         if let Some(i) = ed.focus.and_then(|id| ed.idx(id)) {
             actions.push(Action::Flashcard(i));
         }
+    }
+    if !ed.picked.is_empty() && ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+        ed.picked.clear();
     }
     // Ctrl+Shift+G: cartões com IA da seleção ou da página.
     if ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::G)) {
@@ -540,6 +643,39 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
     }
     if let Some(id) = nav {
         app.open_page(id);
+    }
+}
+
+/// O Markdown da página num campo só, em fonte monoespaçada.
+fn source_editor(ed: &mut PageEditor, ui: &mut Ui, w: f32) {
+    let p = pal();
+    let id = source_id(ed.meta.id);
+    let Some(src) = &mut ed.source else { return };
+    let out = egui::Frame::NONE
+        .fill(p.card)
+        .stroke(Stroke::new(1.0, p.border))
+        .corner_radius(10)
+        .inner_margin(egui::Margin::same(16))
+        .show(ui, |ui| {
+            egui::TextEdit::multiline(src)
+                    .id(id)
+                    .code_editor()
+                    .frame(egui::Frame::NONE)
+                    .font(mono(13.5))
+                    .text_color(p.text)
+                    .desired_width(w - 32.0)
+                    .desired_rows(24)
+                    .lock_focus(true)
+                    .hint_text(egui::RichText::new(tr!("page.markdown_empty")).color(p.dim))
+                .show(ui)
+        })
+        .inner;
+    // A seleção fica guardada depois que o campo perde o foco (clique em "Gerar com IA").
+    if out.response.response.has_focus() {
+        ed.source_sel = out.cursor_range.map(|r| (r.primary.index.0.min(r.secondary.index.0), r.primary.index.0.max(r.secondary.index.0))).filter(|(a, b)| a < b);
+    }
+    if out.response.response.changed() {
+        ed.apply_source();
     }
 }
 
@@ -626,7 +762,7 @@ fn toolbar(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: 
     // Em larguras menores, Imagem/Tabela/Fórmula vão para o menu "Mais".
     let compact = bar.width() < 900.0;
     // O botão da IA só cabe na barra larga; nas outras, fica no menu Inserir/Mais.
-    let ai_button = bar.width() >= 1180.0;
+    let ai_button = bar.width() >= 1180.0 && !ed.aside_shown;
     let fidx = ed.focus.and_then(|id| ed.idx(id));
     let cur_kind = fidx.map(|i| ed.blocks[i].kind).unwrap_or(BlockKind::Paragraph);
     let label_kind = if cur_kind.is_text() { cur_kind.label() } else { BlockKind::Paragraph.label() };
@@ -677,13 +813,17 @@ fn toolbar(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: 
                 actions.push(Action::InsertAfter(at, k));
             }
         }
-        if !ai_button {
+        if !ai_button && !ed.aside_shown {
             menu_sep(ui);
             if menu_item_ex(ui, &tr!("ai.button"), None, false, Some(&keys("Ctrl ⇧ G"))).clicked() {
                 actions.push(Action::AiCards(None));
             }
         }
     });
+    if ed.aside_shown {
+        let _ = (app, p);
+        return;
+    }
     tu.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
         if button_kbd(ui, &tr!("page.create_flashcard"), if compact { None } else { Some("Ctrl ⇧ F") }, Btn::Primary, 30.0).clicked() {
@@ -802,8 +942,35 @@ fn block_ui(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, i: usize, w: f32, n
         BlockKind::Table => {
             changed |= table_block(ed, ui, i, w);
         }
-        BlockKind::Code | BlockKind::Formula => {
-            let is_code = kind == BlockKind::Code;
+        BlockKind::Formula => {
+            // Fora da edição, a fórmula desenhada; clicar volta ao LaTeX, com a prévia embaixo.
+            let editing = has_focus || ed.pending.is_some_and(|(pid, ..)| pid == id) || ed.blocks[i].text.trim().is_empty();
+            egui::Frame::NONE.fill(p.input).stroke(Stroke::new(1.0, p.border)).corner_radius(8).inner_margin(egui::Margin { left: 14, right: 14, top: 8, bottom: 10 }).show(ui, |ui| {
+                ui.set_width(w - 28.0);
+                let (r, _) = ui.allocate_exact_size(vec2(w - 28.0, 14.0), Sense::hover());
+                caps(ui.painter(), r.left_center(), Align2::LEFT_CENTER, &tr!("page.formula_label"), p.accent);
+                if editing {
+                    let mut lay = richtext::mono_layouter(13.0, p.text);
+                    let out = egui::TextEdit::multiline(&mut ed.blocks[i].text).id(eid).frame(egui::Frame::NONE).desired_width(w - 28.0).desired_rows(1).code_editor().layouter(&mut lay).show(ui);
+                    changed |= out.response.response.changed();
+                    text_resp = Some(out);
+                    if !ed.blocks[i].text.trim().is_empty() {
+                        ui.add_space(4.0);
+                        ui.painter().hline(ui.cursor().x_range(), ui.cursor().top(), Stroke::new(1.0, p.line));
+                        math::show(ui, &ed.blocks[i].text, 20.0, p.text, w - 28.0);
+                    }
+                } else {
+                    let resp = math::show(ui, &ed.blocks[i].text, 20.0, p.text, w - 28.0).on_hover_cursor(egui::CursorIcon::Text);
+                    if resp.clicked() {
+                        let n = ed.blocks[i].text.chars().count();
+                        ed.focus_block(id, n, n);
+                        ui.ctx().request_repaint();
+                    }
+                }
+            });
+        }
+        BlockKind::Code => {
+            let is_code = true;
             egui::Frame::NONE.fill(p.input).stroke(Stroke::new(1.0, p.border)).corner_radius(8).inner_margin(egui::Margin { left: 14, right: 14, top: if is_code { 10 } else { 8 }, bottom: 10 }).show(ui, |ui| {
                 ui.set_width(w - 28.0);
                 let (r, _) = ui.allocate_exact_size(vec2(w - 28.0, 14.0), Sense::hover());
@@ -925,7 +1092,8 @@ fn block_ui(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, i: usize, w: f32, n
             }
         }
     } else if let Some((pid, _, _)) = ed.pending {
-        if pid == id {
+        // A fórmula desenhada abre o campo de LaTeX no quadro seguinte, que usa o pedido.
+        if pid == id && kind != BlockKind::Formula {
             ed.pending = None;
             ed.focus = Some(id);
         }
@@ -1152,7 +1320,32 @@ fn gutter(ed: &mut PageEditor, ui: &mut Ui, i: usize, rect: Rect, actions: &mut 
     if hr.drag_started() {
         ed.drag = Some(ed.blocks[i].id);
     }
-    let hr = hr.on_hover_cursor(egui::CursorIcon::Grab);
+    let hr = hr.on_hover_cursor(egui::CursorIcon::Grab).on_hover_text(tr!("page.grip_tip"));
+    // Shift+clique escolhe do último bloco escolhido até este; Ctrl+clique liga e desliga um.
+    let mods = ui.ctx().input(|inp| inp.modifiers);
+    if hr.clicked() && (mods.shift || mods.command) {
+        let id = ed.blocks[i].id;
+        let anchor = ed.pick_anchor.and_then(|a| ed.idx(a));
+        match anchor {
+            Some(a) if mods.shift => {
+                for b in &ed.blocks[a.min(i)..=a.max(i)] {
+                    if !ed.picked.contains(&b.id) {
+                        ed.picked.push(b.id);
+                    }
+                }
+            }
+            _ => {
+                if let Some(k) = ed.picked.iter().position(|x| *x == id) {
+                    ed.picked.remove(k);
+                } else {
+                    ed.picked.push(id);
+                }
+            }
+        }
+        ed.pick_anchor = Some(id);
+        return;
+    }
+    let many = ed.picked.len() > 1 && ed.picked.contains(&ed.blocks[i].id);
     egui::Popup::menu(&hr).frame(popup_frame()).width(230.0).show(|ui| {
         ui.menu_button(tr!("page.turn_into"), |ui| {
             for k in [BlockKind::Paragraph, BlockKind::H1, BlockKind::H2, BlockKind::H3, BlockKind::Bullet, BlockKind::Numbered, BlockKind::Check, BlockKind::Quote, BlockKind::Callout, BlockKind::Code, BlockKind::Formula] {
@@ -1164,7 +1357,8 @@ fn gutter(ed: &mut PageEditor, ui: &mut Ui, i: usize, rect: Rect, actions: &mut 
         if menu_item(ui, &tr!("page.flashcard_from_block"), false).clicked() {
             actions.push(Action::Flashcard(i));
         }
-        if menu_item(ui, &tr!("ai.from_this_block"), false).clicked() {
+        let ai_label = if many { tr_n!("ai.from_picked_blocks", ed.picked.len()) } else { tr!("ai.from_this_block") };
+        if menu_item(ui, &ai_label, false).clicked() {
             actions.push(Action::AiCards(Some(i)));
         }
         if menu_item(ui, &tr!("page.duplicate"), false).clicked() {
@@ -1306,32 +1500,53 @@ fn table_block(ed: &mut PageEditor, ui: &mut Ui, i: usize, w: f32) -> bool {
     for r in ed.blocks[i].rows.iter_mut() {
         r.resize(cols, String::new());
     }
-    let cw = w / cols as f32;
+    // Colunas proporcionais ao texto de cada uma (com mínimo e máximo), para não cortar.
+    let natural: Vec<f32> = (0..cols)
+        .map(|c| ed.blocks[i].rows.iter().map(|r| text_width(ui.painter(), &rich::plain(&r[c]), serif(14.0, W::Regular))).fold(0.0, f32::max).clamp(70.0, 420.0))
+        .collect();
+    let total: f32 = natural.iter().sum();
+    let widths: Vec<f32> = natural.iter().map(|n| n / total * w).collect();
+    let look = |ri: usize| Look { size: 14.0, semi: ri == 0, italic: false, color: if ri == 0 { p.text } else { p.text2 }, line_height: Some(21.0) };
+    let ctx = ui.ctx().clone();
     let resp = egui::Frame::NONE.stroke(Stroke::new(1.0, p.border)).corner_radius(8).show(ui, |ui| {
         ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
         let nrows = ed.blocks[i].rows.len();
         for ri in 0..nrows {
-            let (rr, _) = ui.allocate_exact_size(vec2(w, 34.0), Sense::hover());
+            // A linha cresce com a célula mais alta (o texto quebra dentro da coluna).
+            let cell_ids: Vec<Id> = (0..cols).map(|ci| Id::unique(("cell", id, ri, ci))).collect();
+            let focused: Vec<bool> = cell_ids.iter().map(|cid| ctx.memory(|m| m.has_focus(*cid))).collect();
+            let text_h = (0..cols)
+                .map(|ci| {
+                    let t = &ed.blocks[i].rows[ri][ci];
+                    let g = if focused[ci] { richtext::layouter(look(ri))(ui, t as &dyn egui::TextBuffer, widths[ci] - 20.0) } else { richtext::layouter_quiet(look(ri))(ui, t as &dyn egui::TextBuffer, widths[ci] - 20.0) };
+                    g.size().y
+                })
+                .fold(21.0, f32::max);
+            let row_h = (text_h + 14.0).max(34.0);
+            let (rr, _) = ui.allocate_exact_size(vec2(w, row_h), Sense::hover());
             if ri == 0 {
                 ui.painter().rect_filled(rr, CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }, p.chip);
             }
             if ri + 1 < nrows {
                 ui.painter().hline(rr.x_range(), rr.bottom(), Stroke::new(1.0, p.line_row));
             }
+            let mut x = rr.left();
             for ci in 0..cols {
-                let cell = Rect::from_min_size(pos2(rr.left() + ci as f32 * cw, rr.top()), vec2(cw, 34.0));
+                let cell = Rect::from_min_size(pos2(x, rr.top()), vec2(widths[ci], row_h));
+                x += widths[ci];
                 if ci > 0 {
                     ui.painter().vline(cell.left(), cell.y_range(), Stroke::new(1.0, p.line_row));
                 }
-                let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(cell.shrink2(vec2(10.0, 4.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-                let r = cu.add(
-                    egui::TextEdit::singleline(&mut ed.blocks[i].rows[ri][ci])
-                        .id(Id::unique(("cell", id, ri, ci)))
-                        .frame(egui::Frame::NONE)
-                        .font(serif(14.0, if ri == 0 { W::Semi } else { W::Regular }))
-                        .text_color(if ri == 0 { p.text } else { p.text2 })
-                        .desired_width(cw - 20.0),
-                );
+                let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(cell.shrink2(vec2(10.0, 7.0))).layout(egui::Layout::top_down(egui::Align::Min)));
+                let mut lay_edit = richtext::layouter(look(ri));
+                let mut lay_quiet = richtext::layouter_quiet(look(ri));
+                let lay: &mut dyn FnMut(&Ui, &dyn egui::TextBuffer, f32) -> std::sync::Arc<egui::Galley> = if focused[ci] { &mut lay_edit } else { &mut lay_quiet };
+                let r = cu.add(egui::TextEdit::multiline(&mut ed.blocks[i].rows[ri][ci]).id(cell_ids[ci]).frame(egui::Frame::NONE).desired_width(widths[ci] - 20.0).desired_rows(1).layouter(lay));
+                // Célula de Markdown é uma linha só: Enter vira espaço.
+                let t = &mut ed.blocks[i].rows[ri][ci];
+                if t.contains('\n') {
+                    *t = t.replace('\n', " ");
+                }
                 changed |= r.changed();
                 if r.has_focus() {
                     ed.focus = Some(id);
@@ -1530,14 +1745,22 @@ fn apply_actions(app: &mut App, ed: &mut PageEditor, actions: Vec<Action>, sid: 
                 }
             }
             Action::AiCards(at) => {
+                use super::ai::Scope;
                 let scope = match at {
-                    Some(i) => ed.blocks.get(i).map(|b| super::ai::Scope::Block(b.id)),
+                    // Menu de um bloco que faz parte da escolha: vão todos os escolhidos.
+                    Some(i) => ed.blocks.get(i).map(|b| if ed.picked.len() > 1 && ed.picked.contains(&b.id) { Scope::Blocks(ed.picked_in_order()) } else { Scope::Blocks(vec![b.id]) }),
+                    // Modo Markdown: o trecho selecionado no texto.
+                    None if ed.source.is_some() => match (&ed.source, ed.source_sel) {
+                        (Some(src), Some((a, c))) => Some(Scope::Selection(None, src.chars().skip(a).take(c - a).collect())),
+                        _ => None,
+                    },
+                    None if !ed.picked.is_empty() => Some(Scope::Blocks(ed.picked_in_order())),
                     // Seleção dentro de um bloco de texto, se houver.
                     None => match ed.sel {
                         Some((id, r)) if r.primary.index != r.secondary.index => ed.idx(id).map(|i| {
                             let t = &ed.blocks[i].text;
                             let (a, c) = (r.primary.index.0.min(r.secondary.index.0), r.primary.index.0.max(r.secondary.index.0));
-                            super::ai::Scope::Selection(id, t[rich::byte_of_char(t, a)..rich::byte_of_char(t, c)].to_owned())
+                            Scope::Selection(Some(id), t[rich::byte_of_char(t, a)..rich::byte_of_char(t, c)].to_owned())
                         }),
                         _ => None,
                     },
@@ -1605,6 +1828,42 @@ fn page_aside(app: &mut App, ui: &mut Ui) {
     let title = ed.title.clone();
     let (backlinks, linked) = ed.aside.as_ref().map(|(_, a)| (a.backlinks.clone(), a.linked.clone())).unwrap_or_default();
     ui.spacing_mut().item_spacing.y = 6.0;
+
+    // Embaixo, fixos: criar cartão e gerar com IA.
+    let full = ui.max_rect();
+    let foot_h = 32.0 * 2.0 + 8.0;
+    let foot = Rect::from_min_max(pos2(full.left(), full.bottom() - foot_h), full.max);
+    ui.painter().hline(full.x_range(), foot.top() - 14.0, Stroke::new(1.0, p.line));
+    let mut fu = ui.new_child(egui::UiBuilder::new().max_rect(foot).layout(egui::Layout::top_down(egui::Align::Min)));
+    fu.spacing_mut().item_spacing.y = 8.0;
+    let fw = foot.width();
+    let picked = app.page.as_ref().map_or(0, |e| e.picked.len());
+    if picked > 0 {
+        let line = Rect::from_min_size(pos2(foot.left(), foot.top() - 40.0), vec2(fw, 18.0));
+        text(ui.painter(), line.left_center(), Align2::LEFT_CENTER, &tr_n!("page.blocks_picked", picked), serif(12.5, W::Regular), p.accent, fw - 60.0);
+        let clear = ui.interact(Rect::from_min_max(pos2(line.right() - 56.0, line.top()), line.max), Id::unique("clear_pick"), Sense::click());
+        text(ui.painter(), line.right_center(), Align2::RIGHT_CENTER, &tr!("page.clear_pick"), serif(12.5, W::Regular), if clear.hovered() { p.text } else { p.muted }, 56.0);
+        a11y(&clear, egui::accesskit::Role::Button, &tr!("page.clear_pick"), None);
+        if clear.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+            if let Some(ed) = app.page.as_mut() {
+                ed.picked.clear();
+            }
+        }
+    }
+    let create = button_sized(&mut fu, &tr!("page.create_flashcard"), Some(&keys("Ctrl ⇧ F")), Btn::Primary, vec2(fw, 32.0), true).clicked();
+    let ai = button_sized(&mut fu, &tr!("ai.button"), Some(&keys("Ctrl ⇧ G")), Btn::Secondary, vec2(fw, 32.0), true).clicked();
+    if let Some(ed) = app.page.as_mut() {
+        if create {
+            let at = ed.focus.and_then(|id| ed.idx(id)).unwrap_or(ed.blocks.len().saturating_sub(1));
+            ed.queued.push(Action::Flashcard(at));
+        }
+        if ai {
+            ed.queued.push(Action::AiCards(None));
+        }
+    }
+    let body = Rect::from_min_max(full.min, pos2(full.right(), foot.top() - if picked > 0 { 52.0 } else { 28.0 }));
+    let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(body).layout(egui::Layout::top_down(egui::Align::Min)));
+    let ui = &mut ui;
     egui::ScrollArea::vertical().id_salt("aside").auto_shrink([false, false]).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 6.0;
         caps_label(ui, &tr!("page.outline"));
@@ -1676,9 +1935,6 @@ fn page_aside(app: &mut App, ui: &mut Ui) {
             let ids: Vec<i64> = all_cards.iter().map(|c| c.id).collect();
             review::start(app, review::Scope::Cards(ids, tr!("page.cards_of", title = title)));
         }
-        if button_sized(ui, &tr!("ai.button"), None, Btn::Ghost, vec2(w, 32.0), true).on_hover_text(keys(&tr!("ai.button_tip"))).clicked() {
-            super::ai::open(app, super::ai::Scope::Page);
-        }
     });
 }
 
@@ -1694,69 +1950,125 @@ fn link_row(ui: &mut Ui, s: &str, indent: f32, color: Color32) -> egui::Response
 // ───────────────────────────── Markdown ─────────────────────────────
 
 pub fn to_markdown(title: &str, blocks: &[Block], media_prefix: &str) -> String {
-    let mut out = format!("# {title}\n\n");
-    let mut n = 0;
+    format!("# {title}\n\n{}", body_markdown(blocks, media_prefix))
+}
+
+/// O corpo da página em Markdown, sem o título (é o que o modo Markdown edita).
+/// Itens de lista seguidos ficam juntos; os outros blocos, separados por uma
+/// linha em branco, para que `parse_markdown` os leia de volta iguais.
+pub fn body_markdown(blocks: &[Block], media_prefix: &str) -> String {
+    let mut out = String::new();
+    let mut counters = [0u32; 8];
+    let mut prev: Option<BlockKind> = None;
     for b in blocks {
-        let ind = "    ".repeat(b.indent as usize);
-        if b.kind != BlockKind::Numbered {
-            n = 0;
-        }
-        match b.kind {
-            BlockKind::Paragraph => out.push_str(&format!("{}\n\n", b.text)),
-            BlockKind::H1 => out.push_str(&format!("## {}\n\n", b.text)),
-            BlockKind::H2 => out.push_str(&format!("### {}\n\n", b.text)),
-            BlockKind::H3 => out.push_str(&format!("#### {}\n\n", b.text)),
-            BlockKind::Bullet => out.push_str(&format!("{ind}- {}\n", b.text)),
-            BlockKind::Numbered => {
-                n += 1;
-                out.push_str(&format!("{ind}{n}. {}\n", b.text))
+        let lvl = b.indent.min(7) as usize;
+        if b.kind == BlockKind::Numbered {
+            counters[lvl] += 1;
+            for c in counters.iter_mut().skip(lvl + 1) {
+                *c = 0;
             }
-            BlockKind::Check => out.push_str(&format!("{ind}- [{}] {}\n", if b.checked { "x" } else { " " }, b.text)),
-            BlockKind::Quote => out.push_str(&format!("> {}\n\n", b.text.replace('\n', "\n> "))),
-            BlockKind::Callout => out.push_str(&format!("> **{}** {}\n\n", tr!("page.md_tip"), b.text.replace('\n', "\n> "))),
-            BlockKind::Code => out.push_str(&format!("```{}\n{}\n```\n\n", b.lang, b.text)),
-            BlockKind::Formula => out.push_str(&format!("$$\n{}\n$$\n\n", b.text)),
-            BlockKind::Divider => out.push_str("---\n\n"),
-            BlockKind::Image => out.push_str(&format!("![{}]({media_prefix}{})\n\n", b.caption, b.media)),
+        } else if !b.kind.is_list() {
+            counters = [0; 8];
+        }
+        if b.kind == BlockKind::Paragraph && b.text.trim().is_empty() {
+            continue;
+        }
+        let ind = "    ".repeat(b.indent as usize);
+        // Linhas seguintes de um item de lista ficam recuadas sob ele.
+        let cont = |t: &str| t.replace('\n', &format!("\n{ind}    "));
+        let quoted = |t: &str| t.replace('\n', "\n> ");
+        let chunk = match b.kind {
+            BlockKind::Paragraph => b.text.clone(),
+            BlockKind::H1 => format!("## {}", b.text),
+            BlockKind::H2 => format!("### {}", b.text),
+            BlockKind::H3 => format!("#### {}", b.text),
+            BlockKind::Bullet => format!("{ind}- {}", cont(&b.text)),
+            BlockKind::Numbered => format!("{ind}{}. {}", counters[lvl], cont(&b.text)),
+            BlockKind::Check => format!("{ind}- [{}] {}", if b.checked { "x" } else { " " }, cont(&b.text)),
+            BlockKind::Quote => format!("> {}", quoted(&b.text)),
+            BlockKind::Callout => {
+                let tag = match b.lang.as_str() {
+                    "aviso" => "WARNING",
+                    "info" => "NOTE",
+                    _ => "TIP",
+                };
+                format!("> [!{tag}]\n> {}", quoted(&b.text))
+            }
+            BlockKind::Code => format!("```{}\n{}\n```", b.lang, b.text),
+            BlockKind::Formula => format!("$$\n{}\n$$", b.text),
+            BlockKind::Divider => "---".to_owned(),
+            BlockKind::Image => format!("![{}]({media_prefix}{})", b.caption, b.media),
             BlockKind::Table => {
+                let mut t = String::new();
                 for (i, r) in b.rows.iter().enumerate() {
-                    out.push_str(&format!("| {} |\n", r.join(" | ")));
+                    if i > 0 {
+                        t.push('\n');
+                    }
+                    t.push_str(&format!("| {} |", r.join(" | ")));
                     if i == 0 {
-                        out.push_str(&format!("|{}\n", " --- |".repeat(r.len())));
+                        t.push_str(&format!("\n|{}", " --- |".repeat(r.len())));
                     }
                 }
-                out.push('\n');
+                t
             }
+        };
+        if let Some(pk) = prev {
+            out.push_str(if pk.is_list() && b.kind.is_list() { "\n" } else { "\n\n" });
         }
+        out.push_str(&chunk);
+        prev = Some(b.kind);
     }
-    out.replace("\n\n\n", "\n\n")
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out
 }
 
 pub fn from_markdown(md: &str, media_dir: &std::path::Path, base: &std::path::Path) -> (Option<String>, Vec<Block>) {
+    parse_markdown(md, true, |src| crate::media::store_file(media_dir, &base.join(src)).map(|s| s.file_name).unwrap_or_default())
+}
+
+/// Lê Markdown em blocos. Com `title_line`, o primeiro `# ` vira o título da
+/// página; `image` recebe o caminho de cada imagem e devolve o nome em `media/`.
+fn parse_markdown(md: &str, title_line: bool, mut image: impl FnMut(&str) -> String) -> (Option<String>, Vec<Block>) {
     let mut title = None;
-    let mut blocks = Vec::new();
+    let mut blocks: Vec<Block> = Vec::new();
+    // Recuo (em colunas) de cada nível de lista aberto: aceita 2 ou 4 espaços.
+    let mut levels: Vec<usize> = Vec::new();
+    // Parágrafo ou item de lista sem linha em branco depois: a próxima linha comum o continua.
+    let mut open = false;
     let mut lines = md.lines().peekable();
     while let Some(line) = lines.next() {
-        let t = line.trim_end();
-        let indent = (line.len() - line.trim_start().len()) / 2;
-        let s = t.trim_start();
+        let s = line.trim();
         if s.is_empty() {
+            open = false;
             continue;
         }
-        if let Some(h) = s.strip_prefix("# ") {
-            if title.is_none() && blocks.is_empty() {
-                title = Some(h.to_owned());
-            } else {
-                blocks.push(Block::new(BlockKind::H1, h));
+        let width: usize = line.chars().take_while(|c| c.is_whitespace()).map(|c| if c == '\t' { 4 } else { 1 }).sum();
+        let mut level = || {
+            while levels.last().is_some_and(|&w| w > width) {
+                levels.pop();
             }
+            if levels.last() != Some(&width) {
+                levels.push(width);
+            }
+            (levels.len() - 1).min(5) as u8
+        };
+        let numbered = s.split_once(". ").or_else(|| s.split_once(") ")).filter(|(n, _)| !n.is_empty() && n.len() <= 9 && n.chars().all(|c| c.is_ascii_digit()));
+        let b = if let Some(h) = s.strip_prefix("# ") {
+            if title_line && title.is_none() && blocks.is_empty() {
+                title = Some(h.to_owned());
+                continue;
+            }
+            Block::new(BlockKind::H1, h)
         } else if let Some(h) = s.strip_prefix("## ") {
-            blocks.push(Block::new(BlockKind::H1, h));
+            Block::new(BlockKind::H1, h)
         } else if let Some(h) = s.strip_prefix("### ") {
-            blocks.push(Block::new(BlockKind::H2, h));
-        } else if let Some(h) = s.strip_prefix("#### ") {
-            blocks.push(Block::new(BlockKind::H3, h));
+            Block::new(BlockKind::H2, h)
+        } else if let Some(h) = s.strip_prefix("#### ").or_else(|| s.strip_prefix("##### ")).or_else(|| s.strip_prefix("###### ")) {
+            Block::new(BlockKind::H3, h)
         } else if s.starts_with("```") {
-            let lang = s.trim_start_matches('`').to_owned();
+            let lang = s.trim_start_matches('`').trim().to_owned();
             let mut code = Vec::new();
             for l in lines.by_ref() {
                 if l.trim_start().starts_with("```") {
@@ -1766,7 +2078,7 @@ pub fn from_markdown(md: &str, media_dir: &std::path::Path, base: &std::path::Pa
             }
             let mut b = Block::new(BlockKind::Code, code.join("\n"));
             b.lang = lang;
-            blocks.push(b);
+            b
         } else if s == "$$" {
             let mut f = Vec::new();
             for l in lines.by_ref() {
@@ -1775,55 +2087,129 @@ pub fn from_markdown(md: &str, media_dir: &std::path::Path, base: &std::path::Pa
                 }
                 f.push(l.to_owned());
             }
-            blocks.push(Block::new(BlockKind::Formula, f.join("\n")));
-        } else if s == "---" || s == "***" {
-            blocks.push(Block::new(BlockKind::Divider, ""));
-        } else if let Some(rest) = s.strip_prefix("- [x] ").or_else(|| s.strip_prefix("- [X] ")) {
+            Block::new(BlockKind::Formula, f.join("\n"))
+        } else if s == "---" || s == "***" || s == "___" {
+            Block::new(BlockKind::Divider, "")
+        } else if let Some((mark, rest)) = ["- [x] ", "- [X] ", "* [x] ", "- [ ] ", "* [ ] "].iter().find_map(|m| s.strip_prefix(m).map(|r| (m, r))) {
             let mut b = Block::new(BlockKind::Check, rest);
-            b.checked = true;
-            b.indent = indent.min(5) as u8;
-            blocks.push(b);
-        } else if let Some(rest) = s.strip_prefix("- [ ] ") {
-            let mut b = Block::new(BlockKind::Check, rest);
-            b.indent = indent.min(5) as u8;
-            blocks.push(b);
-        } else if let Some(rest) = s.strip_prefix("- ").or_else(|| s.strip_prefix("* ")) {
+            b.checked = !mark.contains("[ ]");
+            b.indent = level();
+            b
+        } else if let Some(rest) = s.strip_prefix("- ").or_else(|| s.strip_prefix("* ")).or_else(|| s.strip_prefix("+ ")) {
             let mut b = Block::new(BlockKind::Bullet, rest);
-            b.indent = indent.min(5) as u8;
-            blocks.push(b);
-        } else if s.split_once(". ").is_some_and(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())) {
-            let mut b = Block::new(BlockKind::Numbered, s.split_once(". ").unwrap().1);
-            b.indent = indent.min(5) as u8;
-            blocks.push(b);
-        } else if let Some(q) = s.strip_prefix("> ") {
-            blocks.push(Block::new(BlockKind::Quote, q));
+            b.indent = level();
+            b
+        } else if let Some((_, rest)) = numbered {
+            let mut b = Block::new(BlockKind::Numbered, rest);
+            b.indent = level();
+            b
+        } else if s.starts_with('>') {
+            let unquote = |l: &str| l[1..].strip_prefix(' ').unwrap_or(&l[1..]).to_owned();
+            let mut quote = vec![unquote(s)];
+            while let Some(l) = lines.peek().map(|l| l.trim()).filter(|l| l.starts_with('>')) {
+                quote.push(unquote(l));
+                lines.next();
+            }
+            let alert = quote[0].trim().strip_prefix("[!").and_then(|r| r.strip_suffix(']')).map(str::to_ascii_uppercase);
+            if let Some(tag) = alert {
+                quote.remove(0);
+                let mut b = Block::new(BlockKind::Callout, quote.join("\n"));
+                b.lang = match tag.as_str() {
+                    "WARNING" | "CAUTION" => "aviso",
+                    "NOTE" => "info",
+                    _ => "",
+                }
+                .to_owned();
+                b
+            } else if let Some(rest) = ["**Dica:** ", "**Tip:** "].iter().find_map(|m| quote[0].strip_prefix(m)) {
+                // Exportações antigas marcavam o destaque assim.
+                quote[0] = rest.to_owned();
+                Block::new(BlockKind::Callout, quote.join("\n"))
+            } else {
+                Block::new(BlockKind::Quote, quote.join("\n"))
+            }
         } else if s.starts_with('|') {
-            let mut rows = vec![s.trim_matches('|').split('|').map(|c| c.trim().to_owned()).collect::<Vec<_>>()];
+            let cells = |l: &str| l.trim().trim_matches('|').split('|').map(|c| c.trim().to_owned()).collect::<Vec<_>>();
+            let mut rows = vec![cells(s)];
             while lines.peek().is_some_and(|l| l.trim_start().starts_with('|')) {
-                let l = lines.next().unwrap().trim().trim_matches('|').to_owned();
-                if l.chars().all(|c| matches!(c, '-' | ':' | '|' | ' ')) {
+                let l = lines.next().unwrap();
+                if l.trim().chars().all(|c| matches!(c, '-' | ':' | '|' | ' ')) {
                     continue;
                 }
-                rows.push(l.split('|').map(|c| c.trim().to_owned()).collect());
+                rows.push(cells(l));
             }
             let mut b = Block::new(BlockKind::Table, "");
             b.rows = rows;
-            blocks.push(b);
-        } else if let Some(name) = rich::image_line(s) {
-            let caption = s.strip_prefix("![").and_then(|r| r.split_once("](")).map(|(c, _)| c.to_owned()).unwrap_or_default();
-            let path = base.join(&name);
+            b
+        } else if let Some((caption, src)) = s.strip_prefix("![").and_then(|r| r.strip_suffix(')')).and_then(|r| r.split_once("](")) {
             let mut b = Block::new(BlockKind::Image, "");
-            if let Ok(st) = crate::media::store_file(media_dir, &path) {
-                b.media = st.file_name;
+            if !src.is_empty() {
+                b.media = image(src);
             }
-            b.caption = caption;
+            b.caption = caption.to_owned();
             b.width = 0.75;
-            blocks.push(b);
+            b
         } else {
-            blocks.push(Block::new(BlockKind::Paragraph, s));
+            // Linha comum logo depois de um parágrafo ou item: continua o mesmo bloco.
+            match blocks.last_mut() {
+                Some(last) if open => {
+                    last.text.push('\n');
+                    last.text.push_str(s);
+                    continue;
+                }
+                _ => Block::new(BlockKind::Paragraph, s),
+            }
+        };
+        open = b.kind == BlockKind::Paragraph || b.kind.is_list();
+        if !b.kind.is_list() {
+            levels.clear();
         }
+        blocks.push(b);
     }
     (title, blocks)
+}
+
+/// Blocos de um trecho em Markdown, com os ids dos blocos da página de onde ele veio.
+pub(super) fn source_blocks(md: &str, page: &[Block]) -> Vec<Block> {
+    let (_, mut blocks) = parse_markdown(md, false, str::to_owned);
+    keep_ids(page, &mut blocks);
+    blocks
+}
+
+/// O modo Markdown relê a página a cada tecla: reaproveita os ids (e o que o
+/// Markdown não guarda, como a largura das imagens) dos blocos que continuam
+/// lá, para não soltar os cartões vinculados a eles.
+fn keep_ids(old: &[Block], new: &mut [Block]) {
+    let same = |a: &Block, b: &Block| a.kind == b.kind && a.text == b.text && a.rows == b.rows && a.media == b.media && a.caption == b.caption;
+    let mut map: Vec<Option<usize>> = vec![None; new.len()];
+    let mut used = vec![false; old.len()];
+    // Primeiro, os blocos iguais, em ordem.
+    let mut from = 0;
+    for (j, b) in new.iter().enumerate() {
+        if let Some(k) = (from..old.len()).find(|&k| same(&old[k], b)) {
+            map[j] = Some(k);
+            used[k] = true;
+            from = k + 1;
+        }
+    }
+    // Depois, entre dois blocos iguais, os editados: mesmo tipo, na mesma ordem.
+    for j in 0..new.len() {
+        if map[j].is_some() {
+            continue;
+        }
+        let lo = map[..j].iter().rev().find_map(|m| *m).map_or(0, |k| k + 1);
+        let hi = map[j + 1..].iter().find_map(|m| *m).unwrap_or(old.len());
+        if let Some(k) = (lo..hi.max(lo)).find(|&k| !used[k] && old[k].kind == new[j].kind) {
+            map[j] = Some(k);
+            used[k] = true;
+        }
+    }
+    for (b, m) in new.iter_mut().zip(map) {
+        if let Some(k) = m {
+            b.id = old[k].id;
+            b.width = old[k].width;
+        }
+    }
 }
 
 fn export_markdown(app: &mut App, ed: &PageEditor) {
@@ -1889,6 +2275,51 @@ mod tests {
         let kinds: Vec<BlockKind> = back.iter().map(|b| b.kind).collect();
         assert_eq!(kinds, vec![BlockKind::H1, BlockKind::Numbered, BlockKind::Numbered, BlockKind::Quote, BlockKind::Divider]);
         assert_eq!(back[1].text, "**Prófase** — condensa");
+    }
+
+    #[test]
+    fn source_roundtrip_keeps_blocks_and_ids() {
+        let mut nested = Block::new(BlockKind::Bullet, "sub");
+        nested.indent = 1;
+        let mut done = Block::new(BlockKind::Check, "feito");
+        done.checked = true;
+        let mut img = Block::new(BlockKind::Image, "");
+        img.media = "abc.png".into();
+        img.caption = "Célula".into();
+        img.width = 0.4;
+        let mut table = Block::new(BlockKind::Table, "");
+        table.rows = vec![vec!["a".into(), "b".into()], vec!["1".into(), "2".into()]];
+        let mut code = Block::new(BlockKind::Code, "fn main() {}\n\n// fim");
+        code.lang = "rust".into();
+        let blocks = vec![
+            Block::new(BlockKind::H1, "Fases"),
+            Block::new(BlockKind::Paragraph, "linha um\nlinha dois"),
+            Block::new(BlockKind::Bullet, "item"),
+            nested,
+            done,
+            Block::new(BlockKind::Numbered, "primeiro"),
+            Block::new(BlockKind::Paragraph, "depois da lista"),
+            Block::new(BlockKind::Quote, "citação\nem duas"),
+            Block::new(BlockKind::Callout, "**PMAT**"),
+            code,
+            Block::new(BlockKind::Formula, "E = mc^2"),
+            Block::new(BlockKind::Divider, ""),
+            img,
+            table,
+        ];
+        let md = body_markdown(&blocks, "");
+        let (title, mut back) = parse_markdown(&md, false, str::to_owned);
+        assert_eq!(title, None);
+        keep_ids(&blocks, &mut back);
+        assert_eq!(back.len(), blocks.len(), "{md}");
+        for (a, b) in blocks.iter().zip(&back) {
+            assert_eq!((a.id, a.kind, &a.text, a.indent, a.checked, &a.rows, &a.media, &a.caption, a.width), (b.id, b.kind, &b.text, b.indent, b.checked, &b.rows, &b.media, &b.caption, b.width), "{md}");
+        }
+        // Um bloco editado no Markdown continua com o mesmo id.
+        let (_, mut edited) = parse_markdown(&md.replace("depois da lista", "depois da lista, editado"), false, str::to_owned);
+        keep_ids(&blocks, &mut edited);
+        assert_eq!(edited[6].id, blocks[6].id);
+        assert_eq!(edited[6].text, "depois da lista, editado");
     }
 
     #[test]

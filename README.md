@@ -61,16 +61,24 @@ your data lives in one SQLite file on your machine.
 - **Block editor.** Pages and sub-pages per subject, with paragraphs, headings,
   bulleted, numbered and checklists, quotes, callouts, code, formulas, tables,
   dividers and images.
+- **Formulas.** Write LaTeX in a formula block and Discite draws it: fractions,
+  roots, powers and indices, Greek letters, sums and integrals, `\text{…}`,
+  `\left( … \right)`, matrices, `cases` and `aligned`. Click a formula to edit
+  it, with a live preview underneath.
 - **Live markup.** `**bold**`, `*italic*`, `__underline__`, `~~strike~~`,
   `` `code` ``, `==highlight==` and `[[Page links]]` (Ctrl+click follows them).
   Typing `# `, `- `, `1. `, `[] `, `> `, ```` ``` ```` or `---` turns the line
   into that block, and `/` opens the block menu.
+- **Markdown view.** The **Formatted / Markdown** switch above the page (or
+  Ctrl+Shift+M) shows the Markdown behind it. Edit it there and the formatted
+  page follows as you type; cards linked to a block stay linked.
 - **Images.** Paste with Ctrl+V, drop a file on the window or pick one from
   disk. Each image is copied into Discite's `media` folder, so the note never
   breaks when the original moves. Click an image to zoom in.
 - **Autosave**, version history, backlinks, outline, tags, full-text search
   (Ctrl+K), and Markdown import/export.
-- **Create flashcard** (Ctrl+Shift+F) from the selected text. The card
+- **Create flashcard** (Ctrl+Shift+F, or the button at the bottom of the right
+  panel) from the selected text. The card
   remembers its source page, and the page lists every card made from it.
 - **Generate with AI** (Ctrl+Shift+G): a model running on your own computer
   suggests cards from the page, a block or the selected text. You review them
@@ -135,10 +143,15 @@ your computer**. Your notes are never sent anywhere: [llama.cpp](https://github.
 is built into the executable, and the only connection is the one-time model
 download from Hugging Face.
 
-- **Where it is.** *Generate with AI* in the page toolbar (or in the *Insert*
-  menu on narrow windows), *AI cards from this block* in a block's ⠿ menu,
-  the button under *Linked cards*, the command palette, and **Ctrl+Shift+G**.
-  With text selected, only that passage is used.
+- **Where it is.** *Generate with AI* at the bottom of the page's right panel
+  (in the toolbar when that panel is hidden), *AI cards from this block* in a
+  block's ⠿ menu, the command palette, and **Ctrl+Shift+G**.
+- **Choose what goes in.** With text selected (in a block or in the Markdown
+  view), only that passage is used. To pick several blocks, Ctrl+click their
+  ⠿ handles, or Shift+click to pick a whole range; Esc clears the pick. Only
+  what you chose is sent, so it is never cut by the page-size limit.
+- **In your language.** Cards come out in the app's language (English or
+  Brazilian Portuguese), even when the notes are in the other one.
 - **You stay in charge.** Suggestions arrive one by one in a review window.
   Each one can be edited, unchecked or discarded, and nothing becomes a card
   until you press *Add*. Choose how many (5, 10, 15), the kind (question and
@@ -162,10 +175,9 @@ backs it**, and Discite checks it before showing the card:
   inflections are fine), and every number must match.
 
 A card that fails comes **unchecked**, with a red warning listing the words
-that are not in your notes. Each card also shows its source passage. On top
-of that, a page with little content is never asked for more cards than it has
-facts (padding was the main cause of invented cards), and the model is told
-the language of your notes.
+that are not in your notes. Each card also shows its source passage. When the
+cards are in a different language than the notes, only the passage is checked,
+since the answer is a translation.
 
 <p align="center">
   <img src="docs/images/ai-check.png" alt="Two suggestions unchecked with the warning 'Not found in your notes', because they explain what beta blockers do while the note only lists their names" width="900">

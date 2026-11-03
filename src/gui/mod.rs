@@ -9,6 +9,7 @@ mod browser;
 mod charts;
 mod dashboard;
 mod logview;
+mod math;
 mod modals;
 mod note_editor;
 mod page;

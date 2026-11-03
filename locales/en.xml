@@ -223,6 +223,10 @@
   <string key="page.history">History</string>
   <string key="page.focus">Focus</string>
   <string key="page.exit_focus">Exit focus</string>
+  <string key="page.view_formatted">Formatted</string>
+  <string key="page.view_markdown">Markdown</string>
+  <string key="page.markdown_hint">Editing the page as Markdown. Changes show up in the formatted view right away. Ctrl+Shift+M switches back.</string>
+  <string key="page.markdown_empty">Write in Markdown: ## heading, - list, **bold**, [[link]]…</string>
   <string key="page.editing">Editing…</string>
   <string key="page.saved">Saved</string>
   <string key="page.remove_tag">Remove tag</string>
@@ -277,7 +281,6 @@
   <string key="page.due_in">in {interval}</string>
   <plural key="page.study_these"><one>Study this {n}</one><other>Study these {n}</other></plural>
   <string key="page.cards_of">Cards from “{title}”</string>
-  <string key="page.md_tip">Tip:</string>
   <string key="page.md_images_suffix">_images</string>
   <string key="page.imported_title">Imported</string>
 
@@ -780,6 +783,11 @@
   <string key="ai.button">Generate with AI</string>
   <string key="ai.button_tip">Suggest flashcards from this page (or from the selected text) with the local AI · Ctrl Shift G</string>
   <string key="ai.from_this_block">AI cards from this block</string>
+  <plural key="ai.from_picked_blocks"><one>AI cards from the {n} selected block</one><other>AI cards from the {n} selected blocks</other></plural>
+  <plural key="ai.n_blocks"><one>{n} block</one><other>{n} blocks</other></plural>
+  <plural key="page.blocks_picked"><one>{n} block selected</one><other>{n} blocks selected</other></plural>
+  <string key="page.clear_pick">Clear</string>
+  <string key="page.grip_tip">Click: block menu · Drag: move · Shift+click or Ctrl+click: select several blocks</string>
   <string key="ai.palette">Generate cards with AI from this page</string>
   <string key="ai.title">Cards suggested by AI</string>
   <string key="ai.scope_block">{title} · one block</string>
@@ -815,7 +823,6 @@
   <string key="ai.quote">Source: “{text}”</string>
   <string key="ai.not_in_notes">Not found in your notes: check it before adding.</string>
   <string key="ai.not_in_notes_words">Not found in your notes ({words}): check it before adding.</string>
-  <plural key="ai.capped"><one>This page has little content, so the AI was asked for at most {n} card.</one><other>This page has little content, so the AI was asked for at most {n} cards.</other></plural>
   <string key="ai.duplicate">Looks like a card this page already has. Unchecked.</string>
   <string key="ai.empty">The suggestions will show up here.</string>
   <string key="ai.empty_done">No usable cards this time: the AI found nothing new that it could back with your notes. Try another passage, the other card type, or a larger model.</string>

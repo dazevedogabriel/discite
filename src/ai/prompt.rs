@@ -76,12 +76,6 @@ Rules:
 - Prefer the most important ideas: definitions, causes, functions, differences, numbers.
 Answer with JSON only."#;
 
-/// Quantos cartões pedir de fato: no máximo dois por fato das notas, para o
-/// modelo não "encher" uma página de uma frase com o que ele sabe de fora.
-pub fn cap(requested: u32, source: &Source) -> u32 {
-    requested.min((super::ground::facts(&source.text) as u32 * 2).max(2))
-}
-
 pub struct Request<'a> {
     pub source: &'a Source,
     /// Perguntas/lacunas dos cartões que a página já tem.
@@ -112,10 +106,19 @@ pub fn prompt(r: &Request) -> String {
     };
     user.push_str(&format!("\nWrite {} new flashcards; write fewer only if the notes run out of distinct facts. {kind}", r.count));
     // Dito com todas as letras: o modelo pequeno respondia em inglês a notas em português.
-    if let Some(lang) = super::ground::language(&r.source.text) {
-        user.push_str(&format!(" The notes are in {lang}: write every card in {lang}."));
+    // Os cartões saem no idioma do app; o trecho de prova, no das notas.
+    let lang = card_language();
+    user.push_str(&format!(" Write every card in {lang}."));
+    if let Some(notes) = super::ground::language(&r.source.text).filter(|n| !lang.ends_with(n)) {
+        user.push_str(&format!(" The notes are in {notes}: translate the facts into {lang}, but copy the quote exactly as it is in the notes."));
     }
     format!("<|im_start|>system\n{SYSTEM}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n")
+}
+
+/// Idioma dos cartões: o escolhido no app.
+pub fn card_language() -> &'static str {
+    // Português do Brasil, com todas as letras: só "Portuguese" pode sair de Portugal.
+    if crate::i18n::current().starts_with("pt") { "Brazilian Portuguese" } else { "English" }
 }
 
 /// Gramática GBNF que só aceita `{"cards": [...]}` com no máximo `max` cartões.
@@ -175,7 +178,8 @@ struct Raw {
 }
 
 impl Suggestion {
-    fn from_raw(r: Raw, ids: &[i64], notes: &Index) -> Option<Suggestion> {
+    /// `translated`: as notas estão em outro idioma que o dos cartões.
+    fn from_raw(r: Raw, ids: &[i64], notes: &Index, translated: bool) -> Option<Suggestion> {
         let quote = unlist(&r.quote);
         let (kind, front, back) = if r.kind == "cloze" {
             let text = fix_cloze(&unlist(&r.text));
@@ -197,6 +201,8 @@ impl Suggestion {
         // Lacuna: o texto inteiro tem de vir da nota; básico: a resposta.
         let answer = if kind == NoteKind::Cloze { cards::strip_cloze(&front) } else { back.clone() };
         let (grounded, line, missing) = notes.check(&quote, &answer);
+        // Traduzido, as palavras da resposta não estão nas notas: vale só o trecho de prova.
+        let (grounded, missing) = if translated { (line.is_some(), vec![]) } else { (grounded, missing) };
         // O bloco de origem é onde o trecho foi achado (o número que o modelo
         // dá às vezes erra por um).
         let n = line.unwrap_or(r.block);
@@ -287,12 +293,19 @@ pub struct Stream {
     start: Option<usize>,
     ids: Vec<i64>,
     notes: Index,
+    translated: bool,
 }
 
 impl Stream {
     /// `notes` é o texto mandado ao modelo (`Source::text`); `ids`, os blocos.
     pub fn new(ids: Vec<i64>, notes: &str) -> Stream {
-        Stream { buf: String::new(), pos: 0, depth: 0, in_str: false, esc: false, start: None, ids, notes: Index::new(notes) }
+        Stream::for_language(ids, notes, card_language())
+    }
+
+    /// Com o idioma dos cartões dado (`lang`), sem depender do idioma do app.
+    fn for_language(ids: Vec<i64>, notes: &str, lang: &str) -> Stream {
+        let translated = super::ground::language(notes).is_some_and(|l| !lang.ends_with(l));
+        Stream { buf: String::new(), pos: 0, depth: 0, in_str: false, esc: false, start: None, ids, notes: Index::new(notes), translated }
     }
 
     pub fn feed(&mut self, piece: &str) -> Vec<Suggestion> {
@@ -323,7 +336,7 @@ impl Stream {
                         if self.depth == 2 {
                             if let Some(s) = self.start.take() {
                                 if let Ok(raw) = serde_json::from_str::<Raw>(&self.buf[s..=self.pos]) {
-                                    out.extend(Suggestion::from_raw(raw, &self.ids, &self.notes));
+                                    out.extend(Suggestion::from_raw(raw, &self.ids, &self.notes, self.translated));
                                 }
                             }
                         }
@@ -368,7 +381,7 @@ mod tests {
     #[test]
     fn stream_yields_each_card_checked_against_the_notes() {
         let notes = "Page: Retina\n[1] A retina é sensorial.\n[2] A fóvea é a região \"central\" da mácula.\n";
-        let mut s = Stream::new(vec![10, 20], notes);
+        let mut s = Stream::for_language(vec![10, 20], notes, "Portuguese");
         // O primeiro diz bloco 1, mas o trecho está no 2; o terceiro inventa um número.
         let json = r#"{"cards": [{"type": "basic", "block": 1, "quote": "A fóvea é a região \"central\" da mácula", "front": "O que é a {fóvea}?", "back": "Região \"central\" da mácula"},
             {"type": "cloze", "block": 1, "quote": "A retina é sensorial", "text": "A {{c1::retina}} é sensorial."},

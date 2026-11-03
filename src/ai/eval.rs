@@ -82,7 +82,7 @@ fn eval_cards() {
     let mut lines = vec![];
     for (title, blocks) in corpus() {
         let source = prompt::source(&title, &blocks);
-        let count = prompt::cap(10, &source);
+        let count = 10;
         let req = prompt::Request { source: &source, existing: &[], count, style: Style::Auto, focus: None };
         let job = engine::generate(
             GenRequest {

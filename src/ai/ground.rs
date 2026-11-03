@@ -146,25 +146,16 @@ impl Index {
 pub fn language(notes: &str) -> Option<&'static str> {
     let w = words(notes);
     let count = |list: &[&str]| w.iter().filter(|x| list.contains(&x.as_str())).count();
-    let pt = count(&["de", "da", "do", "que", "nao", "uma", "com", "para", "os", "as", "em", "no", "na", "e"]);
+    // Palavras com acento contam para o português: um trecho curto (uma linha de
+    // tabela) quase não tem "de", "que", "com"…
+    let accented = notes.split_whitespace().filter(|x| x.chars().any(|c| "ãõçâêôáéíóúàÃÕÇÂÊÔÁÉÍÓÚÀ".contains(c))).count();
+    let pt = count(&["de", "da", "do", "dos", "das", "que", "nao", "uma", "com", "para", "por", "entre", "ou", "os", "as", "em", "no", "na", "e", "ao"]) + accented;
     let en = count(&["the", "of", "and", "to", "is", "in", "with", "for", "it", "are", "on", "by"]);
     match (pt, en) {
         (p, e) if p >= 3 && p > e * 2 => Some("Portuguese"),
         (p, e) if e >= 3 && e > p * 2 => Some("English"),
         _ => None,
     }
-}
-
-/// Quantos fatos as notas têm, mais ou menos: frases (e itens de lista) com
-/// pelo menos três palavras. Títulos não contam.
-pub fn facts(notes: &str) -> usize {
-    notes
-        .lines()
-        .filter_map(|l| l.split_once(']').map(|(_, t)| t.trim()))
-        .filter(|t| !t.starts_with('#'))
-        .flat_map(|t| t.split(['.', ';', '!', '?']))
-        .filter(|s| s.split_whitespace().count() >= 3)
-        .count()
 }
 
 #[cfg(test)]
@@ -197,10 +188,9 @@ mod tests {
     }
 
     #[test]
-    fn detects_language_and_counts_facts() {
+    fn detects_language() {
         assert_eq!(language(NOTES), Some("Portuguese"));
+        assert_eq!(language("[1] Crânio e fontanelas Forma, perímetro, suturas Fontanela anterior fecha entre 9 e 18 meses"), Some("Portuguese"));
         assert_eq!(language("[1] The fluid mosaic model: a phospholipid bilayer with integral and peripheral proteins; cholesterol modulates fluidity."), Some("English"));
-        assert_eq!(facts(NOTES), 3);
-        assert_eq!(facts("[1] ## Fases\n[2] Prófase"), 0);
     }
 }

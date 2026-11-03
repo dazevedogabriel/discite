@@ -28,10 +28,10 @@ pub struct AiState {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Scope {
     Page,
-    /// Um bloco (menu do bloco).
-    Block(i64),
-    /// Texto selecionado dentro de um bloco.
-    Selection(i64, String),
+    /// Blocos escolhidos: o do menu do bloco, ou vários (Shift/Ctrl+clique no ⠿).
+    Blocks(Vec<i64>),
+    /// Trecho selecionado: dentro de um bloco (`Some(id)`) ou no modo Markdown (`None`).
+    Selection(Option<i64>, String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -72,8 +72,6 @@ pub struct Review {
     /// Textos dos cartões que a página já tem.
     existing: Vec<String>,
     truncated: bool,
-    /// Pouco conteúdo: quantos cartões foram pedidos de fato.
-    capped: Option<u32>,
 }
 
 const COUNTS: [u32; 3] = [5, 10, 15];
@@ -105,7 +103,6 @@ pub fn open(app: &mut App, scope: Scope) {
         snippets: HashMap::new(),
         existing: vec![],
         truncated: false,
-        capped: None,
     });
 }
 
@@ -122,10 +119,18 @@ fn start(app: &mut App, ctx: &egui::Context) {
         r.status = Status::NeedModel;
         return;
     }
-    let blocks = app.db.load_blocks(r.page).unwrap_or_default();
+    let all = app.db.load_blocks(r.page).unwrap_or_default();
+    // Só o que foi escolhido vai para a IA: numa página grande, o trecho
+    // escolhido poderia ficar de fora do limite de texto da página inteira.
+    let (blocks, focus) = match &r.scope {
+        Scope::Page => (all.clone(), None),
+        Scope::Blocks(ids) => (all.iter().filter(|b| ids.contains(&b.id)).cloned().collect(), None),
+        Scope::Selection(Some(id), text) => (all.iter().filter(|b| b.id == *id).cloned().collect(), Some(crate::rich::plain(text))),
+        Scope::Selection(None, md) => (super::page::source_blocks(md, &all), None),
+    };
     let source = prompt::source(&r.title, &blocks);
     r.truncated = source.truncated;
-    r.snippets = blocks.iter().map(|b| (b.id, b.plain().chars().take(70).collect())).collect();
+    r.snippets = all.iter().map(|b| (b.id, b.plain().chars().take(70).collect())).collect();
     r.existing = app
         .db
         .notes_for_page(r.page)
@@ -135,17 +140,7 @@ fn start(app: &mut App, ctx: &egui::Context) {
         .chain(r.items.iter().map(|i| i.s.key()))
         .filter(|s| !s.trim().is_empty())
         .collect();
-    let focus = match &r.scope {
-        Scope::Page => None,
-        Scope::Block(id) => blocks.iter().find(|b| b.id == *id).map(|b| b.plain()),
-        Scope::Selection(_, text) => Some(crate::rich::plain(text)),
-    };
-    // Um bloco ou trecho tem menos fatos que a página: o teto vale para o que foi escolhido.
-    let count = match &focus {
-        Some(f) => r.count.min((crate::ai::ground::facts(&format!("[1] {f}")) as u32 * 2).max(2)),
-        None => prompt::cap(r.count, &source),
-    };
-    r.capped = (count < r.count).then_some(count);
+    let count = r.count;
     let req = prompt::Request { source: &source, existing: &r.existing, count, style: r.style, focus: focus.as_deref() };
     let request = GenRequest {
         model: models::path_of(model),
@@ -304,7 +299,8 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
     let t = text(ui.painter(), pos2(head.left() + 26.0, head.center().y), Align2::LEFT_CENTER, &tr!("ai.title"), serif(19.0, W::Semi), p.text, 320.0);
     let origin = match &r.scope {
         Scope::Page => r.title.clone(),
-        Scope::Block(_) => tr!("ai.scope_block", title = r.title),
+        Scope::Blocks(ids) if ids.len() == 1 => tr!("ai.scope_block", title = r.title),
+        Scope::Blocks(ids) => format!("{} · {}", r.title, tr_n!("ai.n_blocks", ids.len())),
         Scope::Selection(..) => tr!("ai.scope_selection", title = r.title),
     };
     let label = format!("{}  {origin}", tr!("note.source"));
@@ -419,9 +415,6 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
         ui.spacing_mut().item_spacing.y = 12.0;
         if r.truncated {
             para(ui, &tr!("ai.truncated"), serif(12.5, W::Italic), p.muted);
-        }
-        if let Some(n) = r.capped {
-            para(ui, &tr_n!("ai.capped", n as usize), serif(12.5, W::Italic), p.muted);
         }
         let snippets = r.snippets.clone();
         let mut remove = None;
