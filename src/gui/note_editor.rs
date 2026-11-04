@@ -374,6 +374,9 @@ fn field_box(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui, i: usize, w: f32) 
                 wrap_sel(ed, i, m);
             }
         }
+        if ctx.input_mut(|inp| inp.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::H)) {
+            wrap_sel(ed, i, "==");
+        }
         if cloze && ctx.input_mut(|inp| inp.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::C)) {
             new_cloze(ed);
         }
@@ -393,6 +396,13 @@ fn field_box(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui, i: usize, w: f32) 
                     if r.clicked() {
                         wrap_sel(ed, i, m);
                     }
+                }
+                let cr = color_button(ui, 26.0, &tr!("page.colors"));
+                if let Some((bg, ink)) = color_menu(&cr) {
+                    let (a, b) = selection_bytes(ed, i);
+                    let (s, na, nb) = rich::set_color(&ed.note.fields[i], a, b, bg, ink);
+                    ed.pending_cursor = Some((i, rich::char_of_byte(&s, na), rich::char_of_byte(&s, nb)));
+                    ed.note.fields[i] = s;
                 }
                 if button(ui, &tr!("note.image"), Btn::Ghost, 26.0).clicked() {
                     if let Some(path) = rfd::FileDialog::new().add_filter(tr!("note.images_filter"), &["png", "jpg", "jpeg", "webp", "gif", "bmp"]).pick_file() {

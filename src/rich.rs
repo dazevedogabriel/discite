@@ -1,12 +1,58 @@
 //! Marcação inline do Discite, usada nas páginas e nos campos dos cartões:
 //! `**negrito**`, `*itálico*`, `__sublinhado__`, `~~tachado~~`, `` `código` ``,
-//! `==realce==` e `[[Link para página]]`. Nos campos dos cartões, uma linha
+//! `==realce==`, `{red|texto em cor}`, `{=green|realce em cor}` e
+//! `[[Link para página]]`. Nos campos dos cartões, uma linha
 //! `![](arquivo.png)` é uma imagem.
 //!
 //! O editor mostra os marcadores esmaecidos (o texto editado é o mesmo que
 //! fica salvo); a leitura e os cartões escondem os marcadores.
 
 use crate::cards::{GAP_CLOSE, GAP_OPEN};
+
+/// Cores da marcação `{cor|…}` / `{=cor|…}`. O nome salvo é o inglês, para o
+/// texto não depender do idioma do app.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Ink {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Blue,
+    Purple,
+    Gray,
+}
+
+impl Ink {
+    pub const ALL: [Ink; 7] = [Ink::Red, Ink::Orange, Ink::Yellow, Ink::Green, Ink::Blue, Ink::Purple, Ink::Gray];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Ink::Red => "red",
+            Ink::Orange => "orange",
+            Ink::Yellow => "yellow",
+            Ink::Green => "green",
+            Ink::Blue => "blue",
+            Ink::Purple => "purple",
+            Ink::Gray => "gray",
+        }
+    }
+
+    fn from_name(s: &str) -> Option<Ink> {
+        Ink::ALL.into_iter().find(|i| i.name() == s)
+    }
+}
+
+/// `{red|` ou `{=red|` no início de `rest`: (tamanho, é realce, cor).
+fn color_open(rest: &str) -> Option<(usize, bool, Ink)> {
+    let inner = rest.strip_prefix('{')?;
+    let bar = inner.char_indices().take(9).find(|&(_, c)| c == '|')?.0;
+    let name = &inner[..bar];
+    let (bg, name) = match name.strip_prefix('=') {
+        Some(n) => (true, n),
+        None => (false, name),
+    };
+    Some((bar + 2, bg, Ink::from_name(name)?))
+}
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 pub struct Style {
@@ -16,6 +62,9 @@ pub struct Style {
     pub strike: bool,
     pub code: bool,
     pub highlight: bool,
+    /// Cor do texto e cor do realce (`{red|…}`, `{=red|…}`).
+    pub ink: Option<Ink>,
+    pub bg: Option<Ink>,
     pub link: bool,
     /// Lacuna de cloze (frente) ou resposta destacada (verso).
     pub gap: bool,
@@ -46,6 +95,8 @@ pub fn parse(text: &str) -> Vec<Run> {
     };
     let mut i = 0;
     let bytes = text.as_bytes();
+    // Cores abertas: (é realce, cor de antes), para o `}` desfazer.
+    let mut colors: Vec<(bool, Option<Ink>)> = Vec::new();
     while i < text.len() {
         let rest = &text[i..];
         let c = rest.chars().next().unwrap();
@@ -75,6 +126,21 @@ pub fn parse(text: &str) -> Vec<Run> {
                     i += 4 + close;
                     continue;
                 }
+            }
+        }
+        if let Some((len, bg, ink)) = color_open(rest) {
+            let slot = if bg { &mut st.bg } else { &mut st.ink };
+            colors.push((bg, slot.replace(ink)));
+            push(&mut runs, &rest[..len], st, true);
+            i += len;
+            continue;
+        }
+        if c == '}' {
+            if let Some((bg, prev)) = colors.pop() {
+                push(&mut runs, "}", st, true);
+                *(if bg { &mut st.bg } else { &mut st.ink }) = prev;
+                i += 1;
+                continue;
             }
         }
         let two = rest.get(..2).unwrap_or("");
@@ -222,6 +288,92 @@ pub fn toggle_wrap(text: &str, a: usize, b: usize, marker: &str) -> (String, usi
     (s, a + m, b + m)
 }
 
+/// Um trecho `{cor|…}` fechado, em bytes: abertura `[open, start)`, conteúdo
+/// `[start, end)` e o `}` em `end`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ColorSpan {
+    pub open: usize,
+    pub start: usize,
+    pub end: usize,
+    pub bg: bool,
+    pub ink: Ink,
+}
+
+/// Trechos coloridos do texto, com as mesmas regras do `parse` (nada dentro
+/// de `código`).
+pub fn color_spans(text: &str) -> Vec<ColorSpan> {
+    let mut out = Vec::new();
+    let mut stack: Vec<(usize, usize, bool, Ink)> = Vec::new();
+    let mut code = false;
+    let mut i = 0;
+    while i < text.len() {
+        let rest = &text[i..];
+        let c = rest.chars().next().unwrap();
+        if code {
+            code = c != '`';
+        } else if c == '`' && rest[1..].contains('`') {
+            code = true;
+        } else if let Some((len, bg, ink)) = color_open(rest) {
+            stack.push((i, i + len, bg, ink));
+            i += len;
+            continue;
+        } else if c == '}' {
+            if let Some((open, start, bg, ink)) = stack.pop() {
+                out.push(ColorSpan { open, start, end: i, bg, ink });
+            }
+        }
+        i += c.len_utf8();
+    }
+    out
+}
+
+/// Aplica (ou tira, com `None`) uma cor de texto ou de realce na seleção
+/// (bytes `[a, b)`). Escolher a cor que o trecho já tem tira a cor; outra
+/// cor troca. Devolve o novo texto e a nova seleção.
+pub fn set_color(text: &str, a: usize, b: usize, bg: bool, ink: Option<Ink>) -> (String, usize, usize) {
+    let (a, b) = (a.min(b), a.max(b));
+    // O trecho mais interno do mesmo tipo que contém a seleção (ou que ela cobre inteiro).
+    let hit = color_spans(text)
+        .into_iter()
+        .filter(|s| s.bg == bg && ((a >= s.start && b <= s.end) || (a <= s.open && b > s.end)))
+        .min_by_key(|s| s.end - s.open);
+    if let Some(s) = hit {
+        // Seleção parcial com outra cor: vira um trecho novo dentro deste.
+        let whole = a == b || (a <= s.start && b >= s.end);
+        if ink.is_none() || ink == Some(s.ink) || whole {
+            let inner = &text[s.start..s.end];
+            let open = match ink {
+                Some(k) if k != s.ink => format!("{{{}{}|", if bg { "=" } else { "" }, k.name()),
+                _ => String::new(),
+            };
+            let close = if open.is_empty() { "" } else { "}" };
+            let out = format!("{}{open}{inner}{close}{}", &text[..s.open], &text[s.end + 1..]);
+            let old_len = s.end + 1 - s.open;
+            let new_len = open.len() + inner.len() + close.len();
+            let fix = |x: usize| -> usize {
+                if x <= s.open {
+                    x
+                } else if x > s.end {
+                    x + new_len - old_len
+                } else {
+                    s.open + open.len() + (x.max(s.start) - s.start)
+                }
+            };
+            return (out, fix(a), fix(b));
+        }
+    }
+    let Some(ink) = ink else {
+        // "Sem realce" também tira o `==…==` em volta da seleção.
+        if bg && a >= 2 && text[..a].ends_with("==") && text[b..].starts_with("==") {
+            return toggle_wrap(text, a, b, "==");
+        }
+        return (text.to_owned(), a, b);
+    };
+    let open = format!("{{{}{}|", if bg { "=" } else { "" }, ink.name());
+    let out = format!("{}{open}{}}}{}", &text[..a], &text[a..b], &text[b..]);
+    (out, a + open.len(), b + open.len())
+}
+
 /// Índice de byte do caractere `ci`.
 pub fn byte_of_char(text: &str, ci: usize) -> usize {
     text.char_indices().nth(ci).map(|(b, _)| b).unwrap_or(text.len())
@@ -266,6 +418,41 @@ mod tests {
         // Par vazio desfaz.
         let (s3, a3, _) = toggle_wrap("ola ****", 6, 6, "**");
         assert_eq!((s3.as_str(), a3), ("ola ", 4));
+    }
+
+    #[test]
+    fn colors() {
+        let r = parse("a {red|b {=green|c}} d");
+        let visible: String = r.iter().filter(|r| !r.marker).map(|r| r.text.as_str()).collect();
+        assert_eq!(visible, "a b c d");
+        assert!(r.iter().any(|r| r.text == "b " && r.style.ink == Some(Ink::Red) && r.style.bg.is_none()));
+        assert!(r.iter().any(|r| r.text == "c" && r.style.ink == Some(Ink::Red) && r.style.bg == Some(Ink::Green)));
+        assert!(r.iter().any(|r| r.text == " d" && r.style == Style::default()));
+        // Chaves comuns e nomes desconhecidos ficam como texto.
+        assert_eq!(plain("f(x) = {x} {pink|y}"), "f(x) = {x} {pink|y}");
+        assert_eq!(plain("`{red|x}`"), "{red|x}");
+    }
+
+    #[test]
+    fn color_apply_change_remove() {
+        let (s, a, b) = set_color("ola mundo", 4, 9, false, Some(Ink::Red));
+        assert_eq!((s.as_str(), &s[a..b]), ("ola {red|mundo}", "mundo"));
+        let (s2, a2, b2) = set_color(&s, a, b, false, Some(Ink::Blue));
+        assert_eq!((s2.as_str(), &s2[a2..b2]), ("ola {blue|mundo}", "mundo"));
+        let (s3, a3, b3) = set_color(&s2, a2, b2, false, Some(Ink::Blue));
+        assert_eq!((s3.as_str(), &s3[a3..b3]), ("ola mundo", "mundo"));
+        // Cursor dentro do trecho e "sem cor".
+        let (s4, _, _) = set_color("x {=green|abc} y", 11, 11, true, None);
+        assert_eq!(s4, "x abc y");
+        // Realce e cor de texto não se misturam.
+        let (s5, _, _) = set_color("{red|abc}", 5, 8, true, Some(Ink::Yellow));
+        assert_eq!(s5, "{red|{=yellow|abc}}");
+        // "Sem realce" também tira o ==…==.
+        let (s6, _, _) = set_color("a ==b== c", 4, 5, true, None);
+        assert_eq!(s6, "a b c");
+        // Sem seleção: abre um par vazio com o cursor dentro.
+        let (s7, a7, _) = set_color("ab", 1, 1, false, Some(Ink::Gray));
+        assert_eq!((s7.as_str(), a7), ("a{gray|}b", 7));
     }
 
     #[test]

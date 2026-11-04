@@ -69,6 +69,11 @@ your data lives in one SQLite file on your machine.
   `` `code` ``, `==highlight==` and `[[Page links]]` (Ctrl+click follows them).
   Typing `# `, `- `, `1. `, `[] `, `> `, ```` ``` ```` or `---` turns the line
   into that block, and `/` opens the block menu.
+- **Colors and highlights.** The **A** button on the toolbar colors the
+  selected text or highlights it, in red, orange, yellow, green, blue, purple
+  or gray; pick the same color again (or the crossed-out square) to remove it.
+  The same button is in the card editor, so cards keep their colors in review.
+  In Markdown they read `{red|text}` and `{=green|text}`.
 - **Markdown view.** The **Formatted / Markdown** switch above the page (or
   Ctrl+Shift+M) shows the Markdown behind it. Edit it there and the formatted
   page follows as you type; cards linked to a block stay linked.
@@ -319,7 +324,7 @@ On macOS, Ctrl is ⌘.
 | Review | E / I / O | Edit, Info, Source |
 | Review | @ / - / * | Suspend, Bury, Flag |
 | Notebook | Ctrl B / I / U / E | Bold, italic, underline, code |
-| Notebook | Ctrl Shift H | Highlight |
+| Notebook, card editor | Ctrl Shift H | Highlight |
 | Notebook | Ctrl Shift F | Create flashcard from selection |
 | Notebook | Ctrl Shift G | Generate cards with AI (selection or page) |
 | Notebook | Tab / Shift Tab | Indent / outdent list item |

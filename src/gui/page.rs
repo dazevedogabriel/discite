@@ -782,6 +782,10 @@ fn toolbar(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: 
             wrap_focused(ed, m);
         }
     }
+    let cr = color_button(&mut tu, 30.0, &tr!("page.colors"));
+    if let Some((bg, ink)) = color_menu(&cr) {
+        color_focused(ed, bg, ink);
+    }
     sep(&mut tu);
     for (g, k) in [("•≡", BlockKind::Bullet), ("1≡", BlockKind::Numbered), ("☑", BlockKind::Check), ("“", BlockKind::Quote)] {
         let on = cur_kind == k && fidx.is_some();
@@ -893,6 +897,21 @@ fn wrap_focused(ed: &mut PageEditor, marker: &str) {
     } else {
         rich::toggle_wrap(&b.text, ba, bc, marker)
     };
+    let (ca, cc) = (rich::char_of_byte(&s, na), rich::char_of_byte(&s, nc));
+    b.text = s;
+    ed.focus_block(id, ca, cc);
+    ed.touch();
+}
+
+fn color_focused(ed: &mut PageEditor, bg: bool, ink: Option<rich::Ink>) {
+    let Some((id, range)) = ed.sel else { return };
+    let Some(i) = ed.idx(id) else { return };
+    let b = &mut ed.blocks[i];
+    if !b.kind.is_text() || matches!(b.kind, BlockKind::Code | BlockKind::Formula) {
+        return;
+    }
+    let (a, c) = (range.primary.index.0.min(range.secondary.index.0), range.primary.index.0.max(range.secondary.index.0));
+    let (s, na, nc) = rich::set_color(&b.text, rich::byte_of_char(&b.text, a), rich::byte_of_char(&b.text, c), bg, ink);
     let (ca, cc) = (rich::char_of_byte(&s, na), rich::char_of_byte(&s, nc));
     b.text = s;
     ed.focus_block(id, ca, cc);

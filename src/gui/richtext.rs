@@ -58,7 +58,13 @@ pub fn job_ex(text: &str, look: &Look, editor: bool, show_markers: bool, wrap: f
         let st = run.style;
         let mut fmt = egui::TextFormat {
             font_id: font_for(&st, look),
-            color: if run.marker { p.dim } else if st.link || st.gap { p.accent } else if st.bold && !look.semi { p.text } else { look.color },
+            color: match st.ink {
+                _ if run.marker => p.dim,
+                _ if st.link || st.gap => p.accent,
+                Some(i) => ink(i),
+                None if st.bold && !look.semi => p.text,
+                None => look.color,
+            },
             line_height: look.line_height,
             valign: egui::Align::Center,
             ..Default::default()
@@ -72,6 +78,9 @@ pub fn job_ex(text: &str, look: &Look, editor: bool, show_markers: bool, wrap: f
         }
         if st.highlight && !run.marker {
             fmt.background = p.mark;
+        }
+        if let Some(i) = st.bg.filter(|_| !run.marker) {
+            fmt.background = ink_bg(i);
         }
         if st.gap {
             fmt.background = p.accent_soft;

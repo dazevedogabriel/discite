@@ -69,7 +69,8 @@ fn title(ui: &mut Ui, t: &str, sub: &str) {
 fn actions(ui: &mut Ui, ok: &str, danger: bool, enabled: bool) -> (bool, bool) {
     let mut res = (false, false);
     ui.add_space(8.0);
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+    // Altura fixa: com with_layout a linha ocupava a altura toda e esticava o diálogo.
+    ui.allocate_ui_with_layout(vec2(ui.available_width(), 36.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
         let w = button_width(ui, ok, None, 13.0, 14.0);
         if button_sized(ui, ok, None, if danger { Btn::Danger } else { Btn::Primary }, vec2(w, 36.0), enabled).clicked() {
@@ -150,7 +151,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 let name = app.subject(*id).map(|s| s.name.clone()).unwrap_or_default();
                 let cards = crate::stats::card_counts(&app.db, &crate::stats::Scope(Some(&app.subject_decks(*id)))).map(|c| c.total()).unwrap_or(0);
                 let pages = app.db.list_pages(*id).map(|v| v.len()).unwrap_or(0);
-                title(ui, &tr!("modal.delete_q", name = name), &tr!("modal.delete_subject_text", pages = pages, cards = cards));
+                title(ui, &tr!("modal.delete_q", name = name), &tr!("modal.delete_subject_text", pages = tr_n!("modal.n_pages", pages), cards = tr_n!("modal.n_cards", cards)));
                 let (ok, cancel) = actions(ui, &tr!("modal.delete_subject"), true, true);
                 if cancel {
                     keep = false;
@@ -202,7 +203,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 ui.set_width(440.0);
                 let ids = crate::db::subtree(&app.decks, *id);
                 let cards = crate::stats::card_counts(&app.db, &crate::stats::Scope(Some(&ids))).map(|c| c.total()).unwrap_or(0);
-                title(ui, &tr!("modal.delete_q", name = app.deck_path(*id)), &tr!("modal.delete_deck_text", subdecks = ids.len() - 1, cards = cards));
+                title(ui, &tr!("modal.delete_q", name = app.deck_path(*id)), &tr!("modal.delete_deck_text", subdecks = tr_n!("modal.n_subdecks", ids.len() - 1), cards = tr_n!("modal.n_cards", cards)));
                 let (ok, cancel) = actions(ui, &tr!("common.delete"), true, true);
                 if cancel {
                     keep = false;
@@ -263,7 +264,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         label(ui, &tr!("modal.card_not_found"), serif(14.0, W::Regular), p.muted);
                     }
                 }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.allocate_ui_with_layout(vec2(ui.available_width(), 34.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if button(ui, &tr!("common.close"), Btn::Secondary, 34.0).clicked() {
                         keep = false;
                     }
@@ -313,7 +314,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     app.toast(tr!("toast.version_restored"));
                     keep = false;
                 }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.allocate_ui_with_layout(vec2(ui.available_width(), 34.0), egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if button(ui, &tr!("common.close"), Btn::Secondary, 34.0).clicked() {
                         keep = false;
                     }

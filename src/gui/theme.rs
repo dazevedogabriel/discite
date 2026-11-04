@@ -152,6 +152,54 @@ pub fn subject_color(i: usize) -> Color32 {
     p.subjects[i % p.subjects.len()]
 }
 
+/// Cor de texto da marcação `{cor|…}`, escurecida no tema claro para ler bem.
+pub fn ink(i: crate::rich::Ink) -> Color32 {
+    use crate::rich::Ink::*;
+    let dark = DARK.load(Ordering::Relaxed);
+    hex(match (i, dark) {
+        (Red, true) => 0xF2666A,
+        (Orange, true) => 0xF0A63E,
+        (Yellow, true) => 0xE6C84F,
+        (Green, true) => 0x4FC48C,
+        (Blue, true) => 0x5AAEFF,
+        (Purple, true) => 0xB39CFF,
+        (Gray, true) => 0x9A9DA6,
+        (Red, false) => 0xB8332D,
+        (Orange, false) => 0xB0560F,
+        (Yellow, false) => 0x8A6A00,
+        (Green, false) => 0x21744A,
+        (Blue, false) => 0x235FB0,
+        (Purple, false) => 0x6F4FC2,
+        (Gray, false) => 0x6A665A,
+    })
+}
+
+/// Fundo do realce `{=cor|…}`: translúcido, para o texto continuar legível.
+pub fn ink_bg(i: crate::rich::Ink) -> Color32 {
+    use crate::rich::Ink::*;
+    if DARK.load(Ordering::Relaxed) {
+        match i {
+            Red => rgba(0xF2666A, 0.32),
+            Orange => rgba(0xF0A63E, 0.30),
+            Yellow => rgba(0xE6C84F, 0.30),
+            Green => rgba(0x4FC48C, 0.30),
+            Blue => rgba(0x5AAEFF, 0.30),
+            Purple => rgba(0xA88CF0, 0.32),
+            Gray => rgba(0x9A9DA6, 0.28),
+        }
+    } else {
+        match i {
+            Red => rgba(0xE5484D, 0.22),
+            Orange => rgba(0xF08A24, 0.26),
+            Yellow => rgba(0xF2C200, 0.36),
+            Green => rgba(0x3FB27F, 0.26),
+            Blue => rgba(0x3D8EF0, 0.22),
+            Purple => rgba(0x8E6FE0, 0.22),
+            Gray => rgba(0x8A8578, 0.22),
+        }
+    }
+}
+
 /// Fundo translúcido de uma cor (os `--again-soft` etc. do CSS).
 pub fn soft(c: Color32, a: f32) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (a * 255.0) as u8)

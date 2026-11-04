@@ -114,7 +114,7 @@ pub fn parse_clozes(text: &str) -> Vec<ClozeSpan> {
             continue;
         }
         let body_start = start + 3 + digits.len() + 2;
-        let Some(close) = text[body_start..].find("}}") else { break };
+        let Some(close) = cloze_close(&text[body_start..]) else { break };
         let body = &text[body_start..body_start + close];
         let (answer, hint) = match body.split_once("::") {
             Some((a, h)) => (a.to_owned(), Some(h.to_owned())),
@@ -125,6 +125,21 @@ pub fn parse_clozes(text: &str) -> Vec<ClozeSpan> {
         i = end;
     }
     out
+}
+
+/// Posição do `}}` que fecha a lacuna, pulando chaves equilibradas de dentro
+/// (`{red|…}`). Com chaves desequilibradas, vale o primeiro `}}`.
+fn cloze_close(body: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, c) in body.char_indices() {
+        match c {
+            '}' if depth == 0 && body[i..].starts_with("}}") => return Some(i),
+            '{' => depth += 1,
+            '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    body.find("}}")
 }
 
 pub fn cloze_numbers(text: &str) -> Vec<u32> {
@@ -327,6 +342,14 @@ mod tests {
         assert!(back.contains(&format!("{GAP_OPEN}metáfase{GAP_CLOSE}")));
         assert_eq!(strip_cloze(t), "Na metáfase, os cromossomos se alinham na placa equatorial, presos pelos cinetócoros.");
         assert_eq!(next_cloze_number(t), 4);
+    }
+
+    #[test]
+    fn cloze_with_colors_inside() {
+        let t = "A {{c1::{red|insulina}}} baixa a {{c2::glicemia}}.";
+        let c = parse_clozes(t);
+        assert_eq!(c.iter().map(|c| c.answer.as_str()).collect::<Vec<_>>(), ["{red|insulina}", "glicemia"]);
+        assert_eq!(strip_cloze(t), "A {red|insulina} baixa a glicemia.");
     }
 
     #[test]

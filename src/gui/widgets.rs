@@ -316,6 +316,84 @@ pub fn menu_sep(ui: &mut Ui) {
     ui.painter().hline(rect.x_range().shrink(6.0), rect.center().y, Stroke::new(1.0, p.line));
 }
 
+/// Botão "A" das cores: a letra com uma faixa colorida embaixo.
+pub fn color_button(ui: &mut Ui, size: f32, label: &str) -> Response {
+    let p = pal();
+    let (r, resp) = ui.allocate_exact_size(vec2(size, size), Sense::click());
+    if resp.hovered() {
+        ui.painter().rect_filled(r, CornerRadius::same(if size > 28.0 { 8 } else { 6 }), p.hover);
+    }
+    let c = r.center() - vec2(0.0, 2.0);
+    ui.painter().text(c, Align2::CENTER_CENTER, "A", serif(14.0, W::Semi), p.text2);
+    let bar = Rect::from_center_size(pos2(c.x, c.y + 9.0), vec2(14.0, 3.0));
+    let third = bar.width() / 3.0;
+    for (i, k) in [crate::rich::Ink::Red, crate::rich::Ink::Yellow, crate::rich::Ink::Blue].into_iter().enumerate() {
+        let seg = Rect::from_min_size(pos2(bar.left() + third * i as f32, bar.top()), vec2(third, bar.height()));
+        ui.painter().rect_filled(seg, CornerRadius::ZERO, ink(k));
+    }
+    a11y(&resp, egui::accesskit::Role::Button, label, None);
+    resp.on_hover_text(label)
+}
+
+/// Menu de cores preso a `anchor`: uma linha para a cor do texto e outra para
+/// o realce, cada uma com "sem cor" no fim. Devolve (é realce, cor escolhida;
+/// `None` = tirar a cor).
+pub fn color_menu(anchor: &Response) -> Option<(bool, Option<crate::rich::Ink>)> {
+    use crate::rich::Ink;
+    let mut pick = None;
+    // 8 quadrados de 28 px com 4 px entre eles.
+    egui::Popup::menu(anchor).frame(popup_frame()).width(8.0 * 28.0 + 7.0 * 4.0).show(|ui| {
+        let p = pal();
+        ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+        for bg in [false, true] {
+            caps_label(ui, &crate::tr!(if bg { "color.highlight" } else { "color.text" }));
+            ui.horizontal(|ui| {
+                for i in Ink::ALL.into_iter().map(Some).chain([None]) {
+                    let (r, resp) = ui.allocate_exact_size(vec2(28.0, 28.0), Sense::click());
+                    let painter = ui.painter();
+                    let sw = r.shrink(2.0);
+                    if resp.hovered() {
+                        painter.rect_filled(r, CornerRadius::same(6), p.hover);
+                    }
+                    match i {
+                        Some(k) => {
+                            if bg {
+                                painter.rect_filled(sw, CornerRadius::same(5), ink_bg(k));
+                                painter.text(sw.center(), Align2::CENTER_CENTER, "A", serif(14.0, W::Regular), p.text);
+                            } else {
+                                painter.text(sw.center(), Align2::CENTER_CENTER, "A", serif(15.0, W::Semi), ink(k));
+                            }
+                        }
+                        None => {
+                            painter.rect_stroke(sw.shrink(3.0), CornerRadius::same(4), Stroke::new(1.0, p.border_strong), StrokeKind::Inside);
+                            painter.line_segment([sw.shrink(5.0).left_bottom(), sw.shrink(5.0).right_top()], Stroke::new(1.2, p.again));
+                        }
+                    }
+                    let name = match i {
+                        Some(k) => crate::tr!(match k {
+                            Ink::Red => "color.red",
+                            Ink::Orange => "color.orange",
+                            Ink::Yellow => "color.yellow",
+                            Ink::Green => "color.green",
+                            Ink::Blue => "color.blue",
+                            Ink::Purple => "color.purple",
+                            Ink::Gray => "color.gray",
+                        }),
+                        None => crate::tr!(if bg { "color.no_highlight" } else { "color.none" }),
+                    };
+                    a11y(&resp, egui::accesskit::Role::Button, &name, None);
+                    let resp = resp.on_hover_text(&name).on_hover_cursor(egui::CursorIcon::PointingHand);
+                    if resp.clicked() {
+                        pick = Some((bg, i));
+                        ui.close();
+                    }
+                }
+            });
+        }
+    });
+    pick
+}
+
 /// Campo de texto de uma linha com o visual `.field`.
 pub fn text_field(ui: &mut Ui, value: &mut String, hint: &str, width: f32, height: f32) -> egui::Response {
     text_field_font(ui, value, hint, width, height, serif(13.0, W::Regular))
