@@ -1,6 +1,6 @@
 //! O que vai para o modelo (instruções + notas numeradas por bloco) e o que
-//! volta: uma gramática que só aceita o JSON dos cartões e um leitor que
-//! entrega cada cartão assim que o objeto dele fecha.
+//! volta: uma gramática que só aceita o JSON dos cartões (ou das questões) e
+//! um leitor que entrega cada um assim que o objeto dele fecha.
 
 use super::ground::Index;
 use crate::cards::{self, NoteKind};
@@ -76,6 +76,22 @@ Rules:
 - Prefer the most important ideas: definitions, causes, functions, differences, numbers.
 Answer with JSON only."#;
 
+// Questões: o modelo dá a certa e três erradas separadas, e o app sorteia a
+// posição; pedindo as quatro alternativas, os modelos pequenos punham a certa
+// quase sempre na primeira.
+const SYSTEM_QUESTIONS: &str = r#"You write multiple-choice exam questions from a student's notes.
+Rules:
+- Each question tests one fact that is written in the notes. The correct answer must come from the notes. Never add facts that are not in the notes, and never reverse or change what the notes say.
+- "question": a clear question (or an incomplete statement) that makes sense on its own and does not give the answer away.
+- "correct": the correct option, short (a few words, at most one sentence). Options only give the answer: never repeat the question in them.
+- "wrong": three options that are clearly wrong according to the notes but plausible to someone who did not study: other terms, numbers or ideas of the same kind and about the same length as the correct one. Never "all of the above" or "none of the above". Never a second correct option. No letters (A, B…) before the options.
+- "explanation": one short sentence saying why the correct option is right, using the notes.
+- "quote": the exact words of the notes that back the correct answer, copied as they are (one sentence or less).
+- "block" is the number in brackets of the note line the quote comes from.
+- One fact per question. Never repeat a fact. Skip anything already covered by the existing questions.
+- Prefer the most important ideas: definitions, causes, functions, differences, numbers.
+Answer with JSON only."#;
+
 pub struct Request<'a> {
     pub source: &'a Source,
     /// Perguntas/lacunas dos cartões que a página já tem.
@@ -113,6 +129,43 @@ pub fn prompt(r: &Request) -> String {
         user.push_str(&format!(" The notes are in {notes}: translate the facts into {lang}, but copy the quote exactly as it is in the notes."));
     }
     format!("<|im_start|>system\n{SYSTEM}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n")
+}
+
+/// Prompt das questões objetivas (mesmas notas, foco e idioma dos cartões).
+pub fn prompt_questions(r: &Request) -> String {
+    let mut user = format!("Notes:\n{}\n", r.source.text);
+    if let Some(f) = r.focus {
+        user.push_str(&format!("\nOnly write questions about this part of the notes:\n\"{}\"\n", f.trim()));
+    }
+    if !r.existing.is_empty() {
+        user.push_str("\nExisting questions:\n");
+        for e in r.existing.iter().take(60) {
+            user.push_str(&format!("- {}\n", e.replace('\n', " ")));
+        }
+    }
+    user.push_str(&format!("\nWrite {} new multiple-choice questions; write fewer only if the notes run out of distinct facts.", r.count));
+    let lang = card_language();
+    user.push_str(&format!(" Write every question, option and explanation in {lang}."));
+    if let Some(notes) = super::ground::language(&r.source.text).filter(|n| !lang.ends_with(n)) {
+        user.push_str(&format!(" The notes are in {notes}: translate the facts into {lang}, but copy the quote exactly as it is in the notes."));
+    }
+    format!("<|im_start|>system\n{SYSTEM_QUESTIONS}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n")
+}
+
+/// Gramática GBNF das questões: `{"questions": [...]}` com no máximo `max`.
+pub fn grammar_questions(max: u32) -> String {
+    let more = max.saturating_sub(1);
+    format!(
+        r#"root ::= "{{" ws "\"questions\":" ws "[" ws ( qn ( ws "," ws qn ){{0,{more}}} )? ws "]" ws "}}"
+qn ::= "{{" ws "\"question\":" ws q ws "," ws "\"correct\":" ws o ws "," ws "\"wrong\":" ws "[" ws o ws "," ws o ws "," ws o ws "]" ws "," ws "\"explanation\":" ws s ws "," ws "\"quote\":" ws s ws "," ws "\"block\":" ws int ws "}}"
+q ::= "\"" ch{{1,400}} "\""
+o ::= "\"" ch{{1,200}} "\""
+s ::= "\"" ch{{1,400}} "\""
+ch ::= [^"\\\x7F\x00-\x1F] | "\\" ( ["\\/bfnrt] | "u" [0-9a-fA-F]{{4}} )
+int ::= [0-9]{{1,4}}
+ws ::= [ \t\n]{{0,8}}
+"#
+    )
 }
 
 /// Idioma dos cartões: o escolhido no app.
@@ -224,6 +277,87 @@ impl Suggestion {
     }
 }
 
+/// Uma questão objetiva sugerida.
+#[derive(Clone, Debug, PartialEq)]
+pub struct QSuggestion {
+    pub stem: String,
+    pub options: [String; 4],
+    /// Posição da certa (sorteada).
+    pub answer: usize,
+    pub explanation: String,
+    pub block: Option<i64>,
+    pub quote: String,
+    pub grounded: bool,
+    pub missing: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct RawQ {
+    #[serde(default)]
+    question: String,
+    #[serde(default)]
+    correct: String,
+    #[serde(default)]
+    wrong: Vec<String>,
+    #[serde(default)]
+    explanation: String,
+    #[serde(default)]
+    block: usize,
+    #[serde(default)]
+    quote: String,
+}
+
+/// "Todas as anteriores", "None of the above"…: não servem como alternativa.
+fn catch_all(o: &str) -> bool {
+    let f = super::ground::fold(o);
+    ["todas as anteriores", "nenhuma das anteriores", "todas as alternativas", "nenhuma das alternativas", "all of the above", "none of the above"].iter().any(|p| f.contains(p))
+}
+
+impl QSuggestion {
+    fn from_raw(r: RawQ, ids: &[i64], notes: &Index, translated: bool, slot: usize) -> Option<QSuggestion> {
+        let stem = unlist(&r.question);
+        let correct = unlist(&r.correct);
+        let wrong: Vec<String> = r.wrong.iter().map(|w| unlist(w)).collect();
+        if stem.is_empty() || correct.is_empty() || wrong.len() != 3 {
+            return None;
+        }
+        // Quatro alternativas diferentes, sem "todas as anteriores".
+        let mut all = vec![correct.clone()];
+        all.extend(wrong.iter().cloned());
+        let folded: Vec<String> = all.iter().map(|o| super::ground::fold(o).split_whitespace().collect::<Vec<_>>().join(" ")).collect();
+        for (i, f) in folded.iter().enumerate() {
+            if f.is_empty() || folded[..i].contains(f) || catch_all(&all[i]) {
+                return None;
+            }
+        }
+        let quote = unlist(&r.quote);
+        let (grounded, line, missing) = notes.check(&quote, &correct);
+        let (grounded, missing) = if translated { (line.is_some(), vec![]) } else { (grounded, missing) };
+        let n = line.unwrap_or(r.block);
+        let block = n.checked_sub(1).and_then(|i| ids.get(i)).copied();
+        // A certa vai para `slot`; as erradas ocupam as outras posições na ordem.
+        let answer = slot % 4;
+        let mut options: [String; 4] = Default::default();
+        let mut rest = wrong.into_iter();
+        for (i, o) in options.iter_mut().enumerate() {
+            *o = if i == answer { correct.clone() } else { rest.next().unwrap_or_default() };
+        }
+        Some(QSuggestion { stem, options, answer, explanation: r.explanation.trim().to_owned(), block, quote, grounded, missing })
+    }
+
+    /// O texto que identifica a questão (para comparar com as que já existem).
+    pub fn key(&self) -> String {
+        crate::rich::plain(&self.stem)
+    }
+}
+
+/// O que o leitor entrega.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Out {
+    Card(Suggestion),
+    Question(QSuggestion),
+}
+
 /// Tira o marcador de lista ou título que o modelo às vezes copia das notas
 /// ("1. Prófase — …", "- Cones: …", "### …").
 fn unlist(s: &str) -> String {
@@ -294,21 +428,27 @@ pub struct Stream {
     ids: Vec<i64>,
     notes: Index,
     translated: bool,
+    /// Lê `{"questions": …}` em vez de `{"cards": …}`.
+    questions: bool,
+    /// Questões já entregues (para sortear a posição da certa).
+    made: usize,
 }
 
 impl Stream {
     /// `notes` é o texto mandado ao modelo (`Source::text`); `ids`, os blocos.
-    pub fn new(ids: Vec<i64>, notes: &str) -> Stream {
-        Stream::for_language(ids, notes, card_language())
+    pub fn new(ids: Vec<i64>, notes: &str, questions: bool) -> Stream {
+        let mut s = Stream::for_language(ids, notes, card_language());
+        s.questions = questions;
+        s
     }
 
     /// Com o idioma dos cartões dado (`lang`), sem depender do idioma do app.
     fn for_language(ids: Vec<i64>, notes: &str, lang: &str) -> Stream {
         let translated = super::ground::language(notes).is_some_and(|l| !lang.ends_with(l));
-        Stream { buf: String::new(), pos: 0, depth: 0, in_str: false, esc: false, start: None, ids, notes: Index::new(notes), translated }
+        Stream { buf: String::new(), pos: 0, depth: 0, in_str: false, esc: false, start: None, ids, notes: Index::new(notes), translated, questions: false, made: 0 }
     }
 
-    pub fn feed(&mut self, piece: &str) -> Vec<Suggestion> {
+    pub fn feed(&mut self, piece: &str) -> Vec<Out> {
         self.buf.push_str(piece);
         let mut out = vec![];
         let bytes = self.buf.as_bytes();
@@ -335,8 +475,18 @@ impl Stream {
                     b'}' => {
                         if self.depth == 2 {
                             if let Some(s) = self.start.take() {
-                                if let Ok(raw) = serde_json::from_str::<Raw>(&self.buf[s..=self.pos]) {
-                                    out.extend(Suggestion::from_raw(raw, &self.ids, &self.notes, self.translated));
+                                let obj = &self.buf[s..=self.pos];
+                                if self.questions {
+                                    if let Ok(raw) = serde_json::from_str::<RawQ>(obj) {
+                                        // Posição da certa: sorteada, sem repetir a anterior.
+                                        let slot = (self.made + 1 + rand::random::<u32>() as usize % 3) % 4;
+                                        if let Some(q) = QSuggestion::from_raw(raw, &self.ids, &self.notes, self.translated, slot) {
+                                            self.made = slot;
+                                            out.push(Out::Question(q));
+                                        }
+                                    }
+                                } else if let Ok(raw) = serde_json::from_str::<Raw>(obj) {
+                                    out.extend(Suggestion::from_raw(raw, &self.ids, &self.notes, self.translated).map(Out::Card));
                                 }
                             }
                         }
@@ -388,7 +538,10 @@ mod tests {
             {"type": "basic", "block": 1, "quote": "A retina tem 120 milhões de bastonetes", "front": "Quantos bastonetes?", "back": "120 milhões"}]}"#;
         let mut got = vec![];
         for ch in json.chars() {
-            got.extend(s.feed(&ch.to_string()));
+            got.extend(s.feed(&ch.to_string()).into_iter().filter_map(|o| match o {
+                Out::Card(c) => Some(c),
+                Out::Question(_) => None,
+            }));
         }
         assert_eq!(got.len(), 3);
         assert_eq!(got[0].kind, NoteKind::Basic);
@@ -400,6 +553,29 @@ mod tests {
         assert!(got[1].grounded);
         assert!(!got[2].grounded);
         assert!(got[2].missing.contains(&"120".to_owned()));
+    }
+
+    #[test]
+    fn stream_yields_questions_with_the_answer_in_place() {
+        let notes = "Page: Retina\n[1] A retina é sensorial.\n[2] A fóvea fica no centro da mácula.\n";
+        let mut s = Stream::for_language(vec![10, 20], notes, "Portuguese");
+        s.questions = true;
+        let json = r#"{"questions": [{"question": "Onde fica a fóvea?", "correct": "No centro da mácula", "wrong": ["Na íris", "No nervo óptico", "Na córnea"], "explanation": "A fóvea fica no centro da mácula.", "quote": "A fóvea fica no centro da mácula", "block": 2},
+            {"question": "Qual opção?", "correct": "Retina", "wrong": ["Íris", "Todas as anteriores", "Córnea"], "explanation": "", "quote": "A retina é sensorial", "block": 1},
+            {"question": "Repetida?", "correct": "Retina", "wrong": ["retina", "Íris", "Córnea"], "explanation": "", "quote": "A retina é sensorial", "block": 1}]}"#;
+        let mut got = vec![];
+        for ch in json.chars() {
+            got.extend(s.feed(&ch.to_string()));
+        }
+        // Só a primeira serve: a segunda tem "todas as anteriores", a terceira repete a certa.
+        assert_eq!(got.len(), 1);
+        let Out::Question(q) = &got[0] else { panic!("questão") };
+        assert_eq!(q.options[q.answer], "No centro da mácula");
+        let mut opts = q.options.to_vec();
+        opts.sort();
+        assert_eq!(opts, ["Na córnea", "Na íris", "No centro da mácula", "No nervo óptico"]);
+        assert_eq!(q.block, Some(20));
+        assert!(q.grounded);
     }
 
     #[test]

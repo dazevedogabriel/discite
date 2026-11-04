@@ -27,6 +27,11 @@ pub enum Modal {
     RenamePreset { id: i64, name: String },
     MoveCards { ids: Vec<i64>, deck: i64 },
     AddTags { note_ids: Vec<i64>, tags: String },
+    /// Novo banco de questões (`id` None) ou renomear.
+    Bank { id: Option<i64>, subject: i64, name: String },
+    DeleteBank(i64),
+    DeleteQuestions(Vec<i64>),
+    QuizSetup(Box<super::questions::Setup>),
 }
 
 pub struct CsvImport {
@@ -151,7 +156,13 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 let name = app.subject(*id).map(|s| s.name.clone()).unwrap_or_default();
                 let cards = crate::stats::card_counts(&app.db, &crate::stats::Scope(Some(&app.subject_decks(*id)))).map(|c| c.total()).unwrap_or(0);
                 let pages = app.db.list_pages(*id).map(|v| v.len()).unwrap_or(0);
-                title(ui, &tr!("modal.delete_q", name = name), &tr!("modal.delete_subject_text", pages = tr_n!("modal.n_pages", pages), cards = tr_n!("modal.n_cards", cards)));
+                let questions = app.db.subject_question_count(*id).unwrap_or(0);
+                let text = if questions > 0 {
+                    tr!("modal.delete_subject_text_q", pages = tr_n!("modal.n_pages", pages), cards = tr_n!("modal.n_cards", cards), questions = tr_n!("modal.n_questions", questions as usize))
+                } else {
+                    tr!("modal.delete_subject_text", pages = tr_n!("modal.n_pages", pages), cards = tr_n!("modal.n_cards", cards))
+                };
+                title(ui, &tr!("modal.delete_q", name = name), &text);
                 let (ok, cancel) = actions(ui, &tr!("modal.delete_subject"), true, true);
                 if cancel {
                     keep = false;
@@ -416,6 +427,65 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                         Err(e) => app.error(e),
                     }
                 }
+            }
+            Modal::Bank { id, subject, name } => {
+                ui.set_width(420.0);
+                title(ui, &tr!(if id.is_some() { "quiz.rename_bank" } else { "quiz.new_bank" }), &tr!("quiz.bank_hint"));
+                let r = text_field(ui, name, &tr!("quiz.bank_example"), 372.0, 36.0);
+                if !r.has_focus() && name.is_empty() {
+                    r.request_focus();
+                }
+                let (ok, cancel) = actions(ui, &tr!(if id.is_some() { "common.save" } else { "common.create" }), false, !name.trim().is_empty());
+                if cancel {
+                    keep = false;
+                }
+                if (ok || enter) && !name.trim().is_empty() {
+                    let r = match id {
+                        Some(id) => app.db.rename_bank(*id, name.trim()),
+                        None => app.db.add_bank(*subject, name.trim()).map(|_| ()),
+                    };
+                    if let Err(e) = r {
+                        app.error(e);
+                    }
+                    app.data_version += 1;
+                    keep = false;
+                }
+            }
+            Modal::DeleteBank(id) => {
+                ui.set_width(440.0);
+                let name = app.db.bank(*id).ok().flatten().map(|b| b.name).unwrap_or_default();
+                let n = app.db.list_questions(*id).map(|v| v.len()).unwrap_or(0);
+                title(ui, &tr!("modal.delete_q", name = name), &tr!("quiz.delete_bank_text", questions = tr_n!("modal.n_questions", n)));
+                let (ok, cancel) = actions(ui, &tr!("quiz.delete_bank"), true, true);
+                if cancel {
+                    keep = false;
+                }
+                if ok {
+                    app.maybe_backup(true);
+                    if let Err(e) = app.db.delete_bank(*id) {
+                        app.error(e);
+                    }
+                    app.data_version += 1;
+                    keep = false;
+                }
+            }
+            Modal::DeleteQuestions(ids) => {
+                ui.set_width(420.0);
+                title(ui, &tr_n!("quiz.delete_questions_q", ids.len()), &tr!("quiz.delete_questions_text"));
+                let (ok, cancel) = actions(ui, &tr!("common.delete"), true, true);
+                if cancel {
+                    keep = false;
+                }
+                if ok {
+                    if let Err(e) = app.db.delete_questions(ids) {
+                        app.error(e);
+                    }
+                    app.data_version += 1;
+                    keep = false;
+                }
+            }
+            Modal::QuizSetup(s) => {
+                super::questions::setup_ui(app, ui, s, &mut keep, enter);
             }
             Modal::ImportCsv(imp) => {
                 ui.set_width(620.0);

@@ -9,6 +9,7 @@ mod diag;
 mod gui;
 mod i18n;
 mod media;
+mod quiz;
 mod rich;
 mod search;
 mod srs;

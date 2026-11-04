@@ -179,6 +179,45 @@ CREATE TABLE IF NOT EXISTS revlog (
 CREATE INDEX IF NOT EXISTS idx_revlog_card ON revlog(card_id, at);
 CREATE INDEX IF NOT EXISTS idx_revlog_at ON revlog(at);
 
+CREATE TABLE IF NOT EXISTS qbanks (
+  id INTEGER PRIMARY KEY,
+  subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS questions (
+  id INTEGER PRIMARY KEY,
+  bank_id INTEGER NOT NULL REFERENCES qbanks(id) ON DELETE CASCADE,
+  stem TEXT NOT NULL,
+  image TEXT NOT NULL DEFAULT '',
+  options TEXT NOT NULL,
+  answer INTEGER NOT NULL,
+  explanation TEXT NOT NULL DEFAULT '',
+  source_page INTEGER,
+  source_block INTEGER,
+  due INTEGER NOT NULL DEFAULT 0,
+  interval REAL NOT NULL DEFAULT 0,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  correct INTEGER NOT NULL DEFAULT 0,
+  last_ok INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_questions_bank ON questions(bank_id, due);
+
+CREATE TABLE IF NOT EXISTS qlog (
+  id INTEGER PRIMARY KEY,
+  question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+  at INTEGER NOT NULL,
+  chosen INTEGER NOT NULL,
+  ok INTEGER NOT NULL,
+  duration_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_qlog_question ON qlog(question_id, at);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_pages USING fts5(page_id UNINDEXED, block_id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2');
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_notes USING fts5(note_id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2');
 "#;
@@ -541,6 +580,9 @@ impl Db {
         tx.execute("DELETE FROM fts_notes WHERE note_id NOT IN (SELECT id FROM notes)", [])?;
         tx.execute("DELETE FROM fts_pages WHERE page_id IN (SELECT id FROM pages WHERE subject_id = ?1)", [id])?;
         tx.execute("DELETE FROM decks WHERE subject_id = ?1", [id])?;
+        tx.execute("DELETE FROM qlog WHERE question_id IN (SELECT q.id FROM questions q JOIN qbanks b ON b.id = q.bank_id WHERE b.subject_id = ?1)", [id])?;
+        tx.execute("DELETE FROM questions WHERE bank_id IN (SELECT id FROM qbanks WHERE subject_id = ?1)", [id])?;
+        tx.execute("DELETE FROM qbanks WHERE subject_id = ?1", [id])?;
         tx.execute("DELETE FROM pages WHERE subject_id = ?1", [id])?;
         tx.execute("DELETE FROM subjects WHERE id = ?1", [id])?;
         tx.commit()?;
@@ -771,7 +813,9 @@ impl Db {
             }
         }
         let mut st = self.conn.prepare("SELECT data FROM blocks")?;
-        let all: Vec<String> = st.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+        let mut all: Vec<String> = st.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+        // Imagens das questões (a do enunciado e as que estejam no texto).
+        all.extend(self.question_media()?);
         let mut out = Vec::new();
         if let Ok(rd) = std::fs::read_dir(self.media_dir()) {
             for e in rd.flatten() {

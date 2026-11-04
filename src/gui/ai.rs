@@ -1,13 +1,13 @@
-//! IA local na interface: a janela "Gerar cartões com IA" (sugestões que
-//! chegam uma a uma, editáveis, e só viram cartões quando o usuário adiciona),
-//! o download do modelo e a seção nas Configurações.
+//! IA local na interface: a janela "Gerar com IA" (cartões ou questões
+//! objetivas que chegam um a um, editáveis, e só são criados quando o usuário
+//! adiciona), o download do modelo e a seção nas Configurações.
 
 use super::theme::*;
 use super::widgets::*;
 use super::App;
 use crate::ai::engine::{self, Event, GenRequest, Job};
 use crate::ai::models::{self, ModelSpec, Phase};
-use crate::ai::prompt::{self, Style, Suggestion};
+use crate::ai::prompt::{self, QSuggestion, Style, Suggestion};
 use crate::cards::{self, NoteKind};
 use crate::db::Note;
 use crate::{tr, tr_n};
@@ -47,8 +47,36 @@ enum Status {
     Stopped,
 }
 
+/// O que a janela gera.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Make {
+    Cards,
+    Questions,
+}
+
+enum Sugg {
+    Card(Suggestion),
+    Question(QSuggestion),
+}
+
+impl Sugg {
+    fn key(&self) -> String {
+        match self {
+            Sugg::Card(s) => s.key(),
+            Sugg::Question(q) => q.key(),
+        }
+    }
+
+    fn grounded(&self) -> bool {
+        match self {
+            Sugg::Card(s) => s.grounded,
+            Sugg::Question(q) => q.grounded,
+        }
+    }
+}
+
 struct Item {
-    s: Suggestion,
+    s: Sugg,
     keep: bool,
     /// Parecido com um cartão que já existe (ou com outra sugestão).
     dup: bool,
@@ -57,8 +85,12 @@ struct Item {
 pub struct Review {
     page: i64,
     title: String,
+    subject: i64,
     scope: Scope,
+    make: Make,
     deck: i64,
+    /// Banco das questões (`None` = criar um com o nome da disciplina).
+    bank: Option<i64>,
     tags: String,
     count: u32,
     style: Style,
@@ -81,18 +113,38 @@ pub fn open(app: &mut App, scope: Scope) {
     let Some(ed) = app.page.as_mut() else { return };
     ed.flush(&app.db);
     let (page, title, subject) = (ed.meta.id, ed.title.clone(), ed.meta.subject_id);
+    open_page(app, page, title, subject, scope, Make::Cards);
+}
+
+/// Abre a janela de questões para uma página (da aba Questões).
+pub fn open_questions(app: &mut App, page: i64, bank: Option<i64>) {
+    if let Some(ed) = app.page.as_mut().filter(|e| e.meta.id == page) {
+        ed.flush(&app.db);
+    }
+    let Ok(Some(meta)) = app.db.page(page) else { return };
+    open_page(app, page, meta.title, meta.subject_id, Scope::Page, Make::Questions);
+    if let (Some(r), Some(b)) = (app.ai.review.as_mut(), bank) {
+        r.bank = Some(b);
+    }
+}
+
+fn open_page(app: &mut App, page: i64, title: String, subject: i64, scope: Scope, make: Make) {
     let deck = app.default_deck().filter(|d| app.deck(*d).is_some_and(|d| d.subject_id == subject)).or_else(|| app.root_decks(subject).first().map(|d| d.id));
     let Some(deck) = deck else {
         app.toast(tr!("toast.create_deck_first"));
         return;
     };
+    let bank = app.db.list_banks(subject).ok().and_then(|b| b.first().map(|b| b.id));
     let style = app.cfg.ai_style;
     let count = if COUNTS.contains(&app.cfg.ai_count) { app.cfg.ai_count } else { 10 };
     app.ai.review = Some(Review {
         page,
         title,
+        subject,
         scope,
+        make,
         deck,
+        bank,
         tags: tr!("ai.default_tag"),
         count,
         style,
@@ -131,25 +183,25 @@ fn start(app: &mut App, ctx: &egui::Context) {
     let source = prompt::source(&r.title, &blocks);
     r.truncated = source.truncated;
     r.snippets = all.iter().map(|b| (b.id, b.plain().chars().take(70).collect())).collect();
-    r.existing = app
-        .db
-        .notes_for_page(r.page)
-        .unwrap_or_default()
-        .iter()
-        .map(|n| cards::sort_field(n.kind, &n.fields))
-        .chain(r.items.iter().map(|i| i.s.key()))
-        .filter(|s| !s.trim().is_empty())
-        .collect();
+    let questions = r.make == Make::Questions;
+    let before: Vec<String> = if questions {
+        app.db.question_stems_for_page(r.page).unwrap_or_default()
+    } else {
+        app.db.notes_for_page(r.page).unwrap_or_default().iter().map(|n| cards::sort_field(n.kind, &n.fields)).collect()
+    };
+    r.existing = before.into_iter().chain(r.items.iter().map(|i| i.s.key())).filter(|s| !s.trim().is_empty()).collect();
     let count = r.count;
     let req = prompt::Request { source: &source, existing: &r.existing, count, style: r.style, focus: focus.as_deref() };
     let request = GenRequest {
         model: models::path_of(model),
         gpu,
-        prompt: prompt::prompt(&req),
-        grammar: prompt::grammar(r.style, count),
+        prompt: if questions { prompt::prompt_questions(&req) } else { prompt::prompt(&req) },
+        grammar: if questions { prompt::grammar_questions(count) } else { prompt::grammar(r.style, count) },
         ids: source.ids.clone(),
         notes: source.text.clone(),
-        max_tokens: count as usize * 220 + 200,
+        // Uma questão (enunciado, quatro alternativas e explicação) é bem maior que um cartão.
+        max_tokens: count as usize * if questions { 360 } else { 220 } + 200,
+        questions,
     };
     r.ids = source.ids;
     let c = ctx.clone();
@@ -170,11 +222,16 @@ fn poll(r: &mut Review) {
                     r.status = Status::Writing(0);
                 }
             }
-            Event::Card(s) => {
+            Event::Card(_) | Event::Question(_) => {
+                let s = match ev {
+                    Event::Card(c) => Sugg::Card(c),
+                    Event::Question(q) => Sugg::Question(q),
+                    _ => unreachable!(),
+                };
                 let key = s.key();
                 let dup = r.existing.iter().any(|e| prompt::similar(&key, e)) || r.items.iter().any(|i| prompt::similar(&key, &i.s.key()));
                 // Repetido ou sem apoio nas notas: vem desmarcado, com o motivo.
-                let keep = !dup && s.grounded;
+                let keep = !dup && s.grounded();
                 r.items.push(Item { s, keep, dup });
                 let n = r.items.len();
                 r.status = Status::Writing(n);
@@ -199,21 +256,28 @@ fn running(r: &Review) -> bool {
     r.job.is_some()
 }
 
-/// Grava as sugestões marcadas. Devolve quantas notas foram criadas.
+/// Grava as sugestões marcadas. Devolve quantas notas (ou questões) foram criadas.
 fn add_selected(app: &mut App) -> anyhow::Result<usize> {
     let Some(r) = app.ai.review.as_ref() else { return Ok(0) };
+    if r.make == Make::Questions {
+        return add_questions(app);
+    }
     let tags = crate::db::normalize_tags(&r.tags);
     let (deck, page) = (r.deck, r.page);
     let notes: Vec<Note> = r
         .items
         .iter()
         .filter(|i| i.keep && valid(&i.s))
-        .map(|i| {
-            let mut n = Note::new(i.s.kind);
-            n.fields = i.s.fields();
+        .filter_map(|i| match &i.s {
+            Sugg::Card(s) => Some(s),
+            Sugg::Question(_) => None,
+        })
+        .map(|s| {
+            let mut n = Note::new(s.kind);
+            n.fields = s.fields();
             n.tags = tags.clone();
             n.source_page = Some(page);
-            n.source_block = i.s.block;
+            n.source_block = s.block;
             n
         })
         .collect();
@@ -230,11 +294,42 @@ fn add_selected(app: &mut App) -> anyhow::Result<usize> {
     Ok(made)
 }
 
-/// O cartão ainda é válido depois das edições do usuário.
-fn valid(s: &Suggestion) -> bool {
-    match s.kind {
-        NoteKind::Cloze => !cards::cloze_numbers(&s.front).is_empty(),
-        _ => !s.front.trim().is_empty() && !s.back.trim().is_empty(),
+/// Grava as questões marcadas no banco escolhido (criando um, se preciso).
+fn add_questions(app: &mut App) -> anyhow::Result<usize> {
+    let Some(r) = app.ai.review.as_ref() else { return Ok(0) };
+    let name = app.subject(r.subject).map(|s| s.name.clone()).unwrap_or_default();
+    let bank = match r.bank {
+        Some(b) => b,
+        None => app.db.first_bank(r.subject, &name)?,
+    };
+    let page = r.page;
+    let mut made = 0;
+    for i in r.items.iter().filter(|i| i.keep && valid(&i.s)) {
+        let Sugg::Question(s) = &i.s else { continue };
+        let mut q = crate::quiz::Question::new(bank);
+        q.stem = s.stem.clone();
+        q.options = s.options.clone();
+        q.answer = s.answer;
+        q.explanation = s.explanation.clone();
+        q.source_page = Some(page);
+        q.source_block = s.block;
+        app.db.save_question(&mut q)?;
+        made += 1;
+    }
+    if made > 0 {
+        app.changed();
+    }
+    Ok(made)
+}
+
+/// A sugestão ainda é válida depois das edições do usuário.
+fn valid(s: &Sugg) -> bool {
+    match s {
+        Sugg::Card(s) => match s.kind {
+            NoteKind::Cloze => !cards::cloze_numbers(&s.front).is_empty(),
+            _ => !s.front.trim().is_empty() && !s.back.trim().is_empty(),
+        },
+        Sugg::Question(q) => !q.stem.trim().is_empty() && q.options.iter().all(|o| !o.trim().is_empty()),
     }
 }
 
@@ -278,7 +373,8 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         match add_selected(app) {
             Ok(0) => {}
             Ok(n) => {
-                app.toast(tr_n!("ai.added", n));
+                let questions = app.ai.review.as_ref().is_some_and(|r| r.make == Make::Questions);
+                app.toast(if questions { tr_n!("ai.added_questions", n) } else { tr_n!("ai.added", n) });
                 close = true;
             }
             Err(e) => app.error(e),
@@ -325,27 +421,51 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
     ui.painter().hline(foot.x_range(), foot.top(), Stroke::new(1.0, p.line));
     let mut fu = ui.new_child(egui::UiBuilder::new().max_rect(foot.shrink2(vec2(24.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
     fu.spacing_mut().item_spacing.x = 10.0;
-    let path = app.deck_path(r.deck);
-    let color = app.subject_color_of_deck(r.deck);
-    let decks = app.decks.clone();
-    let mut pick = None;
-    select_field(&mut fu, "ai_deck", &path, Some(color), 240.0, 36.0, |ui| {
-        for s in app.subjects.clone() {
-            for d in decks.iter().filter(|d| d.subject_id == s.id) {
-                if menu_item_ex(ui, &app.deck_path(d.id), Some(subject_color(s.color)), d.id == r.deck, None).clicked() {
-                    pick = Some(d.id);
+    let questions = r.make == Make::Questions;
+    if questions {
+        let banks = app.db.list_banks(r.subject).unwrap_or_default();
+        let subject_name = app.subject(r.subject).map(|s| s.name.clone()).unwrap_or_default();
+        let cur = r.bank.and_then(|b| banks.iter().find(|x| x.id == b)).map(|b| b.name.clone()).unwrap_or_else(|| subject_name.clone());
+        let color = app.subject(r.subject).map(|s| subject_color(s.color));
+        select_field(&mut fu, "ai_bank", &cur, color, 240.0, 36.0, |ui| {
+            for b in &banks {
+                if menu_item(ui, &b.name, Some(b.id) == r.bank).clicked() {
+                    r.bank = Some(b.id);
                 }
             }
+            if banks.is_empty() {
+                menu_item(ui, &subject_name, true);
+            }
+        })
+        .on_hover_text(tr!("quiz.bank"));
+    } else {
+        let path = app.deck_path(r.deck);
+        let color = app.subject_color_of_deck(r.deck);
+        let decks = app.decks.clone();
+        let mut pick = None;
+        select_field(&mut fu, "ai_deck", &path, Some(color), 240.0, 36.0, |ui| {
+            for s in app.subjects.clone() {
+                for d in decks.iter().filter(|d| d.subject_id == s.id) {
+                    if menu_item_ex(ui, &app.deck_path(d.id), Some(subject_color(s.color)), d.id == r.deck, None).clicked() {
+                        pick = Some(d.id);
+                    }
+                }
+            }
+        })
+        .on_hover_text(tr!("deck.deck"));
+        if let Some(d) = pick {
+            r.deck = d;
         }
-    })
-    .on_hover_text(tr!("deck.deck"));
-    if let Some(d) = pick {
-        r.deck = d;
+        text_field(&mut fu, &mut r.tags, &tr!("ai.tags_hint"), 170.0, 36.0).on_hover_text(tr!("ai.tags_tip"));
     }
-    text_field(&mut fu, &mut r.tags, &tr!("ai.tags_hint"), 170.0, 36.0).on_hover_text(tr!("ai.tags_tip"));
     let chosen = r.items.iter().filter(|i| i.keep && valid(&i.s)).count();
     fu.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let label = if chosen == 0 { tr!("ai.add_none") } else { tr_n!("ai.add_n", chosen) };
+        let label = match (questions, chosen) {
+            (false, 0) => tr!("ai.add_none"),
+            (false, n) => tr_n!("ai.add_n", n),
+            (true, 0) => tr!("ai.add_questions"),
+            (true, n) => tr_n!("ai.add_questions_n", n),
+        };
         let w = button_width(ui, &label, Some("Ctrl ↵"), 13.0, 14.0);
         if button_sized(ui, &label, Some("Ctrl ↵"), Btn::Primary, vec2(w, 36.0), chosen > 0).clicked() {
             *submit = true;
@@ -364,13 +484,25 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
     let need_model = r.status == Status::NeedModel;
     bu.add_enabled_ui(!busy && !need_model, |ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
+        // Trocar entre cartões e questões recomeça a lista de sugestões.
+        let mut mi = (r.make == Make::Questions) as usize;
+        let (mc, mq) = (tr!("ai.make_cards"), tr!("ai.make_questions"));
+        if segmented(ui, &[mc.as_str(), mq.as_str()], &mut mi, 26.0, true) {
+            r.make = if mi == 1 { Make::Questions } else { Make::Cards };
+            r.items.clear();
+            r.status = Status::Ready;
+        }
+        let questions = r.make == Make::Questions;
         let mut ci = COUNTS.iter().position(|c| *c == r.count).unwrap_or(1);
-        let labels: Vec<String> = COUNTS.iter().map(|c| tr_n!("ai.n_cards", *c as usize)).collect();
+        let labels: Vec<String> = COUNTS.iter().map(|c| if questions { tr_n!("ai.n_questions", *c as usize) } else { tr_n!("ai.n_cards", *c as usize) }).collect();
         let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
         if segmented(ui, &refs, &mut ci, 26.0, false) {
             r.count = COUNTS[ci];
             app.cfg.ai_count = r.count;
             app.save_settings();
+        }
+        if questions {
+            return;
         }
         let mut si = match r.style {
             Style::Auto => 0,
@@ -427,7 +559,7 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
             r.items.remove(i);
         }
         if busy {
-            writing_placeholder(ui);
+            writing_placeholder(ui, r.make);
         } else if r.items.is_empty() {
             empty_state(r, ui);
         }
@@ -441,6 +573,7 @@ fn status_line(app: &App, r: &Review, ui: &mut Ui) {
         Status::Ready => (tr!("ai.status_ready"), p.muted),
         Status::Loading => (tr!("ai.status_loading", model = selected_model(app).name), p.muted),
         Status::Reading(f) => (tr!("ai.status_reading", pct = pct(*f, 0)), p.muted),
+        Status::Writing(n) if r.make == Make::Questions => (tr_n!("ai.status_writing_questions", *n), p.accent),
         Status::Writing(n) => (tr_n!("ai.status_writing", *n), p.accent),
         Status::Done { secs, made } => (tr_n!("ai.status_done", *made, secs = crate::i18n::fixed(*secs as f64, 1)), p.good),
         Status::Failed(e) => (tr!("ai.status_failed", error = e), p.again),
@@ -469,14 +602,19 @@ fn item_card(ui: &mut Ui, i: usize, item: &mut Item, snippets: &HashMap<i64, Str
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
             checkbox(ui, &mut item.keep, "");
-            let kind = match item.s.kind {
-                NoteKind::Cloze => tr!("kind.cloze"),
-                _ => tr!("kind.basic"),
+            let kind = match &item.s {
+                Sugg::Card(s) if s.kind == NoteKind::Cloze => tr!("kind.cloze"),
+                Sugg::Card(_) => tr!("kind.basic"),
+                Sugg::Question(_) => tr!("quiz.question"),
+            };
+            let block = match &item.s {
+                Sugg::Card(s) => s.block,
+                Sugg::Question(q) => q.block,
             };
             let kw = text_width(ui.painter(), &kind.to_uppercase(), serif(10.0, W::Semi)) + 12.0;
             let (kr, _) = ui.allocate_exact_size(vec2(kw, 20.0), Sense::hover());
             caps_sized(ui.painter(), kr.left_center(), Align2::LEFT_CENTER, &kind, 10.0, p.accent);
-            if let Some(snip) = item.s.block.and_then(|b| snippets.get(&b)).filter(|s| !s.trim().is_empty()) {
+            if let Some(snip) = block.and_then(|b| snippets.get(&b)).filter(|s| !s.trim().is_empty()) {
                 let w = ui.available_width() - 40.0;
                 let (r, resp) = ui.allocate_exact_size(vec2(w.max(40.0), 20.0), Sense::hover());
                 text(ui.painter(), r.left_center(), Align2::LEFT_CENTER, &tr!("ai.from_block", text = snip), serif(12.0, W::Italic), p.dim, r.width());
@@ -494,43 +632,57 @@ fn item_card(ui: &mut Ui, i: usize, item: &mut Item, snippets: &HashMap<i64, Str
                 }
             });
         });
-        match item.s.kind {
-            NoteKind::Cloze => {
-                edit_field(ui, ("ai_text", i), &mut item.s.front, &tr!("field.text"));
+        let (quote, grounded, missing) = match &mut item.s {
+            Sugg::Card(s) if s.kind == NoteKind::Cloze => {
+                edit_field(ui, ("ai_text", i), &mut s.front, &tr!("field.text"));
                 // Como a frente vai aparecer na revisão.
-                let front = cards::render_cloze(&item.s.front, cards::cloze_numbers(&item.s.front).first().copied().unwrap_or(1), cards::ClozeSide::Front).replace([cards::GAP_OPEN, cards::GAP_CLOSE], "");
-                if cards::cloze_numbers(&item.s.front).is_empty() {
+                let front = cards::render_cloze(&s.front, cards::cloze_numbers(&s.front).first().copied().unwrap_or(1), cards::ClozeSide::Front).replace([cards::GAP_OPEN, cards::GAP_CLOSE], "");
+                if cards::cloze_numbers(&s.front).is_empty() {
                     para(ui, &tr!("ai.cloze_missing"), serif(12.0, W::Italic), p.again);
                 } else {
                     para(ui, &tr!("ai.cloze_preview", text = crate::rich::plain(&front)), serif(12.5, W::Regular), p.muted);
                 }
+                (s.quote.clone(), s.grounded, s.missing.clone())
             }
-            _ => {
-                edit_field(ui, ("ai_front", i), &mut item.s.front, &tr!("field.front"));
-                edit_field(ui, ("ai_back", i), &mut item.s.back, &tr!("field.back"));
+            Sugg::Card(s) => {
+                edit_field(ui, ("ai_front", i), &mut s.front, &tr!("field.front"));
+                edit_field(ui, ("ai_back", i), &mut s.back, &tr!("field.back"));
+                (s.quote.clone(), s.grounded, s.missing.clone())
             }
-        }
+            Sugg::Question(q) => {
+                edit_field(ui, ("ai_stem", i), &mut q.stem, &tr!("quiz.stem_short"));
+                for k in 0..q.options.len() {
+                    option_field(ui, ("ai_opt", i, k), &mut q.options[k], k, &mut q.answer);
+                }
+                edit_field(ui, ("ai_expl", i), &mut q.explanation, &tr!("quiz.explanation_short"));
+                (q.quote.clone(), q.grounded, q.missing.clone())
+            }
+        };
         // A prova: o trecho da nota que o modelo usou.
-        if !item.s.quote.is_empty() {
-            para(ui, &tr!("ai.quote", text = item.s.quote), serif(12.0, W::Italic), p.dim);
+        if !quote.is_empty() {
+            para(ui, &tr!("ai.quote", text = quote), serif(12.0, W::Italic), p.dim);
         }
-        if !item.s.grounded {
-            let msg = if item.s.missing.is_empty() { tr!("ai.not_in_notes") } else { tr!("ai.not_in_notes_words", words = item.s.missing.join(", ")) };
+        if !grounded {
+            let msg = if missing.is_empty() { tr!("ai.not_in_notes") } else { tr!("ai.not_in_notes_words", words = missing.join(", ")) };
             para(ui, &msg, serif(12.0, W::Semi), p.again);
         }
         if item.dup {
-            para(ui, &tr!("ai.duplicate"), serif(12.0, W::Italic), p.hard);
+            let msg = tr!(if matches!(item.s, Sugg::Question(_)) { "ai.duplicate_question" } else { "ai.duplicate" });
+            para(ui, &msg, serif(12.0, W::Italic), p.hard);
         }
     });
     discard
 }
+
+/// Largura da coluna com o nome do campo ("ENUNCIADO" é o mais largo).
+const LABEL_W: f32 = 80.0;
 
 /// Campo de várias linhas com o visual `.field` e o nome do campo ao lado.
 fn edit_field(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, value: &mut String, name: &str) {
     let p = pal();
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
-        let (lr, _) = ui.allocate_exact_size(vec2(58.0, 30.0), Sense::hover());
+        let (lr, _) = ui.allocate_exact_size(vec2(LABEL_W, 30.0), Sense::hover());
         caps(ui.painter(), lr.left_center(), Align2::LEFT_CENTER, name, p.dim);
         let w = ui.available_width();
         egui::Frame::NONE.fill(p.input).stroke(Stroke::new(1.0, p.border_control)).corner_radius(8).inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
@@ -547,7 +699,35 @@ fn edit_field(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, value: &m
     });
 }
 
-fn writing_placeholder(ui: &mut Ui) {
+/// Alternativa editável: a letra (clique marca como certa) e o texto.
+fn option_field(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, value: &mut String, k: usize, answer: &mut usize) {
+    let p = pal();
+    ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing.x = 10.0;
+        // A letra fica encostada no campo, alinhado com os de cima.
+        ui.add_space(LABEL_W - 24.0);
+        let right = *answer == k;
+        let (r, resp) = ui.allocate_exact_size(vec2(24.0, 30.0), Sense::click());
+        let c = r.center();
+        if right {
+            ui.painter().circle_filled(c, 11.0, p.good);
+        } else {
+            ui.painter().circle_stroke(c, 10.5, Stroke::new(1.0, if resp.hovered() { p.good } else { p.border_strong }));
+        }
+        let letter = crate::gui::questions::letter(k);
+        ui.painter().text(c, Align2::CENTER_CENTER, letter, serif(12.0, W::Semi), if right { p.on_accent } else { p.text2 });
+        a11y(&resp, egui::accesskit::Role::RadioButton, &tr!("quiz.mark_right", letter = letter), Some(right));
+        if resp.on_hover_text(tr!("quiz.mark_right", letter = letter)).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+            *answer = k;
+        }
+        let w = ui.available_width();
+        egui::Frame::NONE.fill(p.input).stroke(Stroke::new(1.0, if right { soft(p.good, 0.6) } else { p.border_control })).corner_radius(8).inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
+            ui.add(egui::TextEdit::multiline(value).id(ui.make_persistent_id(id)).frame(egui::Frame::NONE).font(serif(14.0, W::Regular)).text_color(p.text).desired_rows(1).desired_width(w - 22.0));
+        });
+    });
+}
+
+fn writing_placeholder(ui: &mut Ui, make: Make) {
     let p = pal();
     let w = ui.available_width();
     let (r, _) = ui.allocate_exact_size(vec2(w, 64.0), Sense::hover());
@@ -558,7 +738,8 @@ fn writing_placeholder(ui: &mut Ui) {
         let a = ((t * 3.0 - k as f32 * 0.6).sin() * 0.5 + 0.5).clamp(0.15, 1.0);
         ui.painter().circle_filled(pos2(r.left() + 24.0 + k as f32 * 12.0, r.center().y), 3.5, p.accent.gamma_multiply(a));
     }
-    text(ui.painter(), pos2(r.left() + 66.0, r.center().y), Align2::LEFT_CENTER, &tr!("ai.writing"), serif(13.0, W::Italic), p.muted, w - 80.0);
+    let msg = tr!(if make == Make::Questions { "ai.writing_question" } else { "ai.writing" });
+    text(ui.painter(), pos2(r.left() + 66.0, r.center().y), Align2::LEFT_CENTER, &msg, serif(13.0, W::Italic), p.muted, w - 80.0);
     ui.ctx().request_repaint();
 }
 
@@ -566,6 +747,7 @@ fn empty_state(r: &Review, ui: &mut Ui) {
     let p = pal();
     let s = match &r.status {
         Status::Failed(_) => tr!("ai.empty_failed"),
+        Status::Done { .. } if r.make == Make::Questions => tr!("ai.empty_done_questions"),
         Status::Done { .. } => tr!("ai.empty_done"),
         Status::Ready => tr!("ai.empty_ready"),
         _ => tr!("ai.empty"),

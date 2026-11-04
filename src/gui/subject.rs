@@ -1,10 +1,11 @@
 //! Disciplina (Baralhos.dc.html): cabeçalho com abas Caderno · Baralhos ·
-//! Estatísticas, cards de retenção/hoje/carga e a árvore de baralhos.
+//! Questões · Estatísticas, cards de retenção/hoje/carga e a árvore de baralhos.
+//! A aba Questões fica em `questions.rs`.
 
 use super::modals::Modal;
 use super::theme::*;
 use super::widgets::*;
-use super::{App, Screen, Tab, page, review, stats_view};
+use super::{App, Screen, Tab, page, questions, review, stats_view};
 use crate::{tr, tr_n};
 use crate::db::Deck;
 use crate::stats::{self, Scope};
@@ -102,16 +103,18 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64, current: Tab) {
     let c = app.subject_counts(sid);
     let study_label = tr!("subject.study", name = subject.name);
     let study_w = button_width(&bu, &study_label, None, 13.0, 14.0).min(260.0);
-    if button_sized(&mut bu, &study_label, None, Btn::Primary, vec2(study_w, 34.0), c.new + c.learn + c.review > 0).clicked() {
+    if tab_sel == Tab::Questions {
+        questions::header_buttons(app, &mut bu, sid);
+    } else if button_sized(&mut bu, &study_label, None, Btn::Primary, vec2(study_w, 34.0), c.new + c.learn + c.review > 0).clicked() {
         review::start(app, review::Scope::Subject(sid));
     }
-    if button_kbd(&mut bu, &tr!("common.add_note"), Some("Ctrl ⇧ A"), Btn::Secondary, 34.0).clicked() {
+    if tab_sel != Tab::Questions && button_kbd(&mut bu, &tr!("common.add_note"), Some("Ctrl ⇧ A"), Btn::Secondary, 34.0).clicked() {
         let deck = app.default_deck().filter(|d| deck_ids.contains(d)).or(deck_ids.first().copied());
         if let Some(d) = deck {
             app.note_editor = Some(super::note_editor::NoteEditor::new_note(d, None));
         }
     }
-    let tabs = Rect::from_min_size(pos2(x0, head.bottom() - 41.0), vec2(400.0, 40.0));
+    let tabs = Rect::from_min_size(pos2(x0, head.bottom() - 41.0), vec2(520.0, 40.0));
     let mut tu = ui.new_child(egui::UiBuilder::new().max_rect(tabs).layout(egui::Layout::left_to_right(egui::Align::Center)));
     tu.spacing_mut().item_spacing.x = 24.0;
     if tab(&mut tu, &tr!("nav.notebook"), false).clicked() {
@@ -120,12 +123,19 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64, current: Tab) {
     if tab(&mut tu, &tr!("nav.decks"), tab_sel == Tab::Decks).clicked() {
         app.go(Screen::Subject(sid, Tab::Decks));
     }
+    if tab(&mut tu, &tr!("nav.questions"), tab_sel == Tab::Questions).clicked() {
+        app.go(Screen::Subject(sid, Tab::Questions));
+    }
     if tab(&mut tu, &tr!("nav.stats"), tab_sel == Tab::Stats).clicked() {
         app.go(Screen::Subject(sid, Tab::Stats));
     }
 
     if tab_sel == Tab::Stats {
         stats_view::ui(app, ui, Some(sid));
+        return;
+    }
+    if tab_sel == Tab::Questions {
+        questions::ui(app, ui, sid);
         return;
     }
 

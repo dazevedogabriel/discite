@@ -1,6 +1,6 @@
 //! Janela do Discite, implementada a partir do canvas "Discite — Interface":
 //! barra de título própria, barra lateral (inteira ou recolhida), Painel,
-//! Estatísticas, Cartões, Disciplina (Caderno · Baralhos · Estatísticas),
+//! Estatísticas, Cartões, Disciplina (Caderno · Baralhos · Questões · Estatísticas),
 //! Sessão de revisão, Opções do preset, Configurações, editor de nota,
 //! paleta de comandos e avisos.
 
@@ -15,6 +15,7 @@ mod note_editor;
 mod page;
 mod palette;
 mod preset;
+mod questions;
 mod review;
 mod richtext;
 mod settings;
@@ -122,6 +123,7 @@ impl Default for Settings {
 pub enum Tab {
     Notebook,
     Decks,
+    Questions,
     Stats,
 }
 
@@ -132,6 +134,8 @@ pub enum Screen {
     Browser,
     Subject(i64, Tab),
     Review,
+    /// Resolução de questões (simulado ou revisão).
+    Quiz,
     Preset(i64),
     Settings,
 }
@@ -158,6 +162,9 @@ pub struct App {
     toasts: Vec<(String, bool, Instant)>,
     pub modal: Option<modals::Modal>,
     pub note_editor: Option<note_editor::NoteEditor>,
+    pub question_editor: Option<questions::Editor>,
+    pub quiz: Option<questions::Quiz>,
+    pub questions: questions::State,
     pub page: Option<page::PageEditor>,
     pub session: Option<review::Session>,
     pub browser: browser::BrowserState,
@@ -201,6 +208,9 @@ impl App {
             toasts: vec![],
             modal: None,
             note_editor: None,
+            question_editor: None,
+            quiz: None,
+            questions: Default::default(),
             page: None,
             session: None,
             browser: Default::default(),
@@ -510,7 +520,7 @@ impl App {
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
         let typing = ctx.memory(|m| m.focused().is_some()) && ctx.egui_wants_keyboard_input();
-        let overlay = self.modal.is_some() || self.note_editor.is_some() || self.palette.is_some() || self.ai.review.is_some() || self.log_view.is_some();
+        let overlay = self.modal.is_some() || self.note_editor.is_some() || self.question_editor.is_some() || self.palette.is_some() || self.ai.review.is_some() || self.log_view.is_some();
         let cmd = |k: Key| ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, k));
         let cmd_shift = |k: Key| ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, k));
         if cmd(Key::K) {
@@ -530,7 +540,7 @@ impl App {
             }
             self.save_settings();
         }
-        if self.screen != Screen::Review {
+        if self.screen != Screen::Review && self.screen != Screen::Quiz {
             if cmd(Key::N) {
                 match self.current_subject() {
                     Some(s) => self.new_page(s, None),
@@ -755,7 +765,7 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
             }
             resp.context_menu(|ui| subject_menu(app, ui, s));
             if active {
-                for (key, tab) in [("nav.notebook", Tab::Notebook), ("nav.decks", Tab::Decks), ("nav.stats", Tab::Stats)] {
+                for (key, tab) in [("nav.notebook", Tab::Notebook), ("nav.decks", Tab::Decks), ("nav.questions", Tab::Questions), ("nav.stats", Tab::Stats)] {
                     let label = &tr!(key);
                     let on = matches!(scr, Screen::Subject(_, t) if t == tab);
                     let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::click());
@@ -939,7 +949,7 @@ impl eframe::App for App {
         // 28 pt no Mac: a altura da barra nativa, com os semáforos centralizados.
         egui::Panel::top("titlebar").exact_size(if MAC { 28.0 } else { 38.0 }).frame(egui::Frame::NONE).show_separator_line(false).show(ui, |ui| title_bar(self, ui));
 
-        let review = self.screen == Screen::Review;
+        let review = self.screen == Screen::Review || self.screen == Screen::Quiz;
         if !review {
             let collapsed = if matches!(self.screen, Screen::Subject(_, Tab::Notebook)) { !self.cfg.notebook_sidebar_open } else { self.cfg.sidebar_collapsed };
             egui::Panel::left("sidebar")
@@ -955,11 +965,13 @@ impl eframe::App for App {
             Screen::Browser => browser::ui(self, ui),
             Screen::Subject(sid, tab) => subject::ui(self, ui, sid, tab),
             Screen::Review => review::ui(self, ui),
+            Screen::Quiz => questions::quiz_ui(self, ui),
             Screen::Preset(id) => preset::ui(self, ui, id),
             Screen::Settings => settings::ui(self, ui),
         });
 
         note_editor::show(self, &ctx);
+        questions::show_editor(self, &ctx);
         ai::show(self, &ctx);
         logview::show(self, &ctx);
         modals::show(self, &ctx);

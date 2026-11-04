@@ -2,7 +2,7 @@
 //! geração, mantém na memória enquanto houver uso e descarrega depois de um
 //! tempo parado, para devolver a RAM (ou VRAM).
 
-use super::prompt::{self, Suggestion};
+use super::prompt::{self, QSuggestion, Suggestion};
 use anyhow::{Context, Result, anyhow, bail};
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
@@ -34,6 +34,8 @@ pub struct GenRequest {
     /// As notas como foram mandadas (`Source::text`), para conferir os cartões.
     pub notes: String,
     pub max_tokens: usize,
+    /// Questões objetivas em vez de cartões.
+    pub questions: bool,
 }
 
 #[derive(Debug)]
@@ -44,6 +46,8 @@ pub enum Event {
     Reading(usize, usize),
     /// Um cartão terminou de ser escrito.
     Card(Suggestion),
+    /// Uma questão terminou de ser escrita.
+    Question(QSuggestion),
     /// O modelo começou (ou continua) a escrever.
     Writing,
     Finished { secs: f32 },
@@ -175,7 +179,7 @@ fn run(rx: Receiver<Cmd>) {
             Cmd::Generate(req, tx, cancel, repaint) => {
                 let wrote = std::cell::Cell::new(false);
                 let send = |e: Event| {
-                    if matches!(e, Event::Card(_)) {
+                    if matches!(e, Event::Card(_) | Event::Question(_)) {
                         wrote.set(true);
                     }
                     let _ = tx.send(e);
@@ -263,7 +267,7 @@ fn run_job(backend: &LlamaBackend, model: &LlamaModel, req: &GenRequest, cancel:
 
     let mut grammar = LlamaSampler::grammar(model, &req.grammar, "root").map_err(|e| anyhow!("grammar: {e:?}"))?;
     let mut chain = LlamaSampler::chain_simple([LlamaSampler::top_k(40), LlamaSampler::top_p(0.9, 1), LlamaSampler::temp(0.5), LlamaSampler::dist(rand::random())]);
-    let mut stream = prompt::Stream::new(req.ids.clone(), &req.notes);
+    let mut stream = prompt::Stream::new(req.ids.clone(), &req.notes, req.questions);
     let mut bytes: Vec<u8> = vec![];
     let start = Instant::now();
     let mut idx = batch.n_tokens() - 1;
@@ -301,8 +305,11 @@ fn run_job(backend: &LlamaBackend, model: &LlamaModel, req: &GenRequest, cancel:
         if valid > 0 {
             let text = String::from_utf8_lossy(&bytes[..valid]).into_owned();
             bytes.drain(..valid);
-            for card in stream.feed(&text) {
-                send(Event::Card(card));
+            for out in stream.feed(&text) {
+                send(match out {
+                    prompt::Out::Card(c) => Event::Card(c),
+                    prompt::Out::Question(q) => Event::Question(q),
+                });
             }
         }
         if count % 8 == 0 {
