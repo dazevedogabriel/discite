@@ -177,8 +177,10 @@ download from Hugging Face.
   (in the toolbar when that panel is hidden), *AI cards from this block* in a
   block's ⠿ menu, the command palette, and **Ctrl+Shift+G**.
 - **Choose what goes in.** With text selected (in a block or in the Markdown
-  view), only that passage is used. To pick several blocks, Ctrl+click their
-  ⠿ handles, or Shift+click to pick a whole range; Esc clears the pick. Only
+  view), only that passage is used. To pick several blocks, drag a box in the
+  margin beside the text, Ctrl+click their ⠿ handles, or Shift+click to pick a
+  whole range (Ctrl or Shift while dragging adds to the pick). Click outside
+  the text or press Esc to clear it. Only
   what you chose is sent, so it is never cut by the page-size limit.
 - **In your language.** Cards come out in the app's language (English or
   Brazilian Portuguese), even when the notes are in the other one.

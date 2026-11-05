@@ -47,9 +47,15 @@ pub struct PageEditor {
     aside_shown: bool,
     /// Ações pedidas pela lateral, aplicadas pelo editor no quadro seguinte.
     queued: Vec<Action>,
-    /// Blocos escolhidos com Shift/Ctrl+clique no ⠿ (para a IA).
+    /// Blocos escolhidos com Shift/Ctrl+clique no ⠿ ou arrastando fora do texto (para a IA).
     picked: Vec<i64>,
     pick_anchor: Option<i64>,
+    /// Retângulo de seleção em andamento: o ponto de partida (relativo ao topo
+    /// do conteúdo, para acompanhar a rolagem) e os blocos que já estavam
+    /// escolhidos (Ctrl/Shift soma à escolha).
+    band: Option<(egui::Vec2, Vec<i64>)>,
+    /// Altura do conteúdo no quadro anterior: o fundo clicável cobre a página toda.
+    content_h: f32,
     /// Trecho selecionado no modo Markdown (em caracteres).
     source_sel: Option<(usize, usize)>,
 }
@@ -126,6 +132,8 @@ impl PageEditor {
             queued: Vec::new(),
             picked: Vec::new(),
             pick_anchor: None,
+            band: None,
+            content_h: 0.0,
             source_sel: None,
         })
     }
@@ -507,6 +515,11 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
     let mut bu = ui.new_child(egui::UiBuilder::new().max_rect(body));
     let mut block_rects: Vec<(i64, Rect)> = Vec::new();
     egui::ScrollArea::vertical().id_salt(("page", ed.meta.id)).auto_shrink([false, false]).show(&mut bu, |ui| {
+        // Fundo da página, por baixo dos blocos: só recebe o que cai fora do
+        // texto (margens e espaços entre blocos).
+        let origin = ui.max_rect().min;
+        let bg_h = ed.content_h.max(ui.clip_rect().bottom() - origin.y);
+        let bg = ui.interact(Rect::from_min_size(origin, vec2(ui.max_rect().width(), bg_h)), ui.scope_id().with("page_bg"), Sense::click_and_drag());
         ui.add_space(34.0);
         let left_pad = ((ui.available_width() - col_w) / 2.0).max(56.0);
         ui.horizontal(|ui| {
@@ -559,6 +572,10 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
                 let _ = r;
             });
         });
+        if ed.source.is_none() {
+            pick_band(&mut ed, ui, &bg, origin, &block_rects);
+        }
+        ed.content_h = ui.min_rect().bottom() - origin.y;
     });
 
     // Arrastar blocos.
@@ -916,6 +933,56 @@ fn color_focused(ed: &mut PageEditor, bg: bool, ink: Option<rich::Ink>) {
     b.text = s;
     ed.focus_block(id, ca, cc);
     ed.touch();
+}
+
+/// Clicar fora do texto limpa a escolha de blocos; arrastar desenha um
+/// retângulo e escolhe os blocos que ele cruza (na altura), rolando a página
+/// quando o ponteiro chega perto da borda. Ctrl ou Shift somam à escolha.
+fn pick_band(ed: &mut PageEditor, ui: &mut Ui, bg: &egui::Response, origin: egui::Pos2, block_rects: &[(i64, Rect)]) {
+    let p = pal();
+    let mods = ui.input(|i| i.modifiers);
+    let add = mods.command || mods.shift;
+    if bg.drag_started_by(egui::PointerButton::Primary) {
+        if let Some(pos) = bg.interact_pointer_pos() {
+            ui.ctx().memory_mut(|m| m.stop_text_input());
+            ed.slash = None;
+            ed.band = Some((pos - origin, if add { ed.picked.clone() } else { Vec::new() }));
+        }
+    }
+    if let Some((start, base)) = ed.band.clone() {
+        if let Some(pos) = ui.ctx().pointer_latest_pos() {
+            let band = Rect::from_two_pos(origin + start, pos);
+            let mut picked = base;
+            for (id, r) in block_rects {
+                if r.bottom() >= band.top() && r.top() <= band.bottom() && !picked.contains(id) {
+                    picked.push(*id);
+                }
+            }
+            ed.pick_anchor = ed.blocks.iter().find(|b| picked.contains(&b.id)).map(|b| b.id);
+            ed.picked = picked;
+            ui.painter().rect(band, CornerRadius::same(4), soft(p.accent, 0.10), Stroke::new(1.0, soft(p.accent, 0.55)), StrokeKind::Inside);
+            // Rolagem automática perto da borda de cima ou de baixo.
+            let clip = ui.clip_rect();
+            let dy = if pos.y < clip.top() + 36.0 {
+                (clip.top() + 36.0 - pos.y).min(36.0) * 0.5
+            } else if pos.y > clip.bottom() - 36.0 {
+                -(pos.y - (clip.bottom() - 36.0)).min(36.0) * 0.5
+            } else {
+                0.0
+            };
+            if dy != 0.0 {
+                ui.scroll_with_delta(vec2(0.0, dy));
+                ui.ctx().request_repaint();
+            }
+        }
+        if !bg.dragged() {
+            ed.band = None;
+        }
+    }
+    if bg.clicked() && !add {
+        ed.picked.clear();
+        ed.pick_anchor = None;
+    }
 }
 
 fn insert_image_block(ed: &mut PageEditor, at: usize, name: String) {
