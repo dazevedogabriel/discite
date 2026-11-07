@@ -37,6 +37,12 @@ use widgets::*;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Largura mínima da janela (metade de um MacBook Air de 13" é ~735 px).
+const MIN_W: f32 = 680.0;
+/// Abaixo desta largura a barra lateral fica recolhida, a não ser que o
+/// usuário a abra (só enquanto a janela estiver estreita).
+const NARROW_W: f32 = 900.0;
+
 pub fn run() -> Result<()> {
     // Inglês até as configurações serem lidas (o banco guarda o idioma escolhido).
     crate::i18n::set_language(Some("en"));
@@ -50,7 +56,9 @@ pub fn run() -> Result<()> {
         // No Linux, liga a janela ao atalho discite.desktop (ícone na barra de tarefas).
         .with_app_id("discite")
         .with_inner_size([1280.0, 800.0])
-        .with_min_inner_size([1024.0, 640.0])
+        // Cabe em metade de uma tela de notebook: sem isso o macOS não deixa a
+        // janela entrar na tela dividida (Split View) nem no lado a lado.
+        .with_min_inner_size([MIN_W, 520.0])
         .with_icon(window_icon());
     // Windows/Linux: sem moldura, com a barra de título do design. macOS: barra
     // nativa transparente sobre o conteúdo, para manter os três botões do sistema.
@@ -179,6 +187,10 @@ pub struct App {
     pub dropped: Vec<std::path::PathBuf>,
     pub ai: ai::AiState,
     pub log_view: Option<logview::LogView>,
+    /// Largura da janela no último quadro.
+    pub window_w: f32,
+    /// Barra lateral aberta à mão com a janela estreita (não fica salvo).
+    narrow_sidebar: bool,
 }
 
 impl App {
@@ -223,6 +235,8 @@ impl App {
             dropped: vec![],
             ai: Default::default(),
             log_view: None,
+            window_w: 1280.0,
+            narrow_sidebar: false,
             cfg,
         };
         let _ = app.db.unbury();
@@ -230,6 +244,33 @@ impl App {
         app.reload();
         app.maybe_backup(false);
         app
+    }
+
+    /// A barra lateral está recolhida agora? Com a janela estreita, sim, a não
+    /// ser que o usuário a tenha aberto.
+    fn sidebar_is_collapsed(&self) -> bool {
+        if self.window_w < NARROW_W {
+            !self.narrow_sidebar
+        } else if matches!(self.screen, Screen::Subject(_, Tab::Notebook)) {
+            !self.cfg.notebook_sidebar_open
+        } else {
+            self.cfg.sidebar_collapsed
+        }
+    }
+
+    /// Abre ou recolhe a barra lateral (« », » e Ctrl+\). Com a janela
+    /// estreita, a escolha vale só até ela alargar.
+    fn set_sidebar(&mut self, open: bool) {
+        if self.window_w < NARROW_W {
+            self.narrow_sidebar = open;
+            return;
+        }
+        if matches!(self.screen, Screen::Subject(_, Tab::Notebook)) {
+            self.cfg.notebook_sidebar_open = open;
+        } else {
+            self.cfg.sidebar_collapsed = !open;
+        }
+        self.save_settings();
     }
 
     pub fn save_settings(&mut self) {
@@ -533,12 +574,8 @@ impl App {
             self.add_note();
         }
         if cmd(Key::Backslash) {
-            if matches!(self.screen, Screen::Subject(_, Tab::Notebook)) {
-                self.cfg.notebook_sidebar_open = !self.cfg.notebook_sidebar_open;
-            } else {
-                self.cfg.sidebar_collapsed = !self.cfg.sidebar_collapsed;
-            }
-            self.save_settings();
+            let open = self.sidebar_is_collapsed();
+            self.set_sidebar(open);
         }
         if self.screen != Screen::Review && self.screen != Screen::Quiz {
             if cmd(Key::N) {
@@ -729,12 +766,7 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
         text(ui.painter(), cr.center(), Align2::CENTER_CENTER, "«", serif(16.0, W::Regular), if resp.hovered() { p.text } else { p.dim }, 30.0);
         a11y(&resp, egui::accesskit::Role::Button, &tr!("nav.collapse_sidebar"), None);
         if resp.on_hover_text(keys(&tr!("nav.collapse_sidebar"))).on_hover_cursor(CursorIcon::PointingHand).clicked() {
-            if matches!(app.screen, Screen::Subject(_, Tab::Notebook)) {
-                app.cfg.notebook_sidebar_open = false;
-            } else {
-                app.cfg.sidebar_collapsed = true;
-            }
-            app.save_settings();
+            app.set_sidebar(false);
         }
     }
     ui.add_space(20.0);
@@ -927,12 +959,7 @@ fn sidebar_collapsed(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(rest);
     }
     if icon_button(ui, "»", &tr!("nav.expand_sidebar"), 36.0).clicked() {
-        if matches!(app.screen, Screen::Subject(_, Tab::Notebook)) {
-            app.cfg.notebook_sidebar_open = true;
-        } else {
-            app.cfg.sidebar_collapsed = false;
-        }
-        app.save_settings();
+        app.set_sidebar(true);
     }
 }
 
@@ -944,17 +971,25 @@ pub fn header(ui: &mut egui::Ui, title: &str, subtitle: &str, right: impl FnOnce
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 76.0), Sense::hover());
     ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, p.line));
     let left = Rect::from_min_max(rect.min + vec2(28.0, 0.0), pos2(rect.right() - 28.0, rect.bottom()));
-    text(ui.painter(), pos2(left.left(), rect.center().y - 10.0), Align2::LEFT_CENTER, title, serif(22.0, W::Semi), p.text, left.width() * 0.6);
-    text(ui.painter(), pos2(left.left(), rect.center().y + 14.0), Align2::LEFT_CENTER, subtitle, serif(13.0, W::Regular), p.muted, left.width() * 0.6);
+    // Os controles da direita primeiro: o título usa só o que sobra.
     let mut r = ui.new_child(egui::UiBuilder::new().max_rect(left).layout(egui::Layout::right_to_left(egui::Align::Center)));
     r.spacing_mut().item_spacing.x = 10.0;
     right(&mut r);
+    let used = if r.min_rect().width() > 0.0 { left.right() - r.min_rect().left() + 16.0 } else { 0.0 };
+    let tw = (left.width() - used).max(80.0);
+    text(ui.painter(), pos2(left.left(), rect.center().y - 10.0), Align2::LEFT_CENTER, title, serif(22.0, W::Semi), p.text, tw);
+    text(ui.painter(), pos2(left.left(), rect.center().y + 14.0), Align2::LEFT_CENTER, subtitle, serif(13.0, W::Regular), p.muted, tw);
 }
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let p = pal();
+        let w = ctx.content_rect().width();
+        if w >= NARROW_W {
+            self.narrow_sidebar = false;
+        }
+        self.window_w = w;
         self.collect_input(&ctx);
         self.shortcuts(&ctx);
         if self.counts_at.elapsed() > Duration::from_secs(20) {
@@ -967,7 +1002,7 @@ impl eframe::App for App {
 
         let review = self.screen == Screen::Review || self.screen == Screen::Quiz;
         if !review {
-            let collapsed = if matches!(self.screen, Screen::Subject(_, Tab::Notebook)) { !self.cfg.notebook_sidebar_open } else { self.cfg.sidebar_collapsed };
+            let collapsed = self.sidebar_is_collapsed();
             egui::Panel::left("sidebar")
                 .exact_size(if collapsed { 60.0 } else { 240.0 })
                 .frame(egui::Frame::NONE.fill(p.sidebar))

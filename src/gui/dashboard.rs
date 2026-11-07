@@ -54,11 +54,13 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
             open_settings = true;
         }
         // "Buscar ou executar…" abre a paleta.
-        let (r, resp) = ui.allocate_exact_size(vec2(300.0, 36.0), Sense::click());
+        // Em janela estreita a busca encolhe (e perde a tecla) para o título caber.
+        let sw = (ui.available_width() * 0.42).clamp(150.0, 300.0);
+        let (r, resp) = ui.allocate_exact_size(vec2(sw, 36.0), Sense::click());
         ui.painter().rect(r, CornerRadius::same(8), p.input, Stroke::new(1.0, if resp.hovered() { p.border_strong } else { p.border_control }), StrokeKind::Inside);
         search_icon(ui.painter(), pos2(r.left() + 19.0, r.center().y), 15.0, p.muted);
-        text(ui.painter(), pos2(r.left() + 34.0, r.center().y), Align2::LEFT_CENTER, &tr!("dash.search"), serif(13.0, W::Italic), p.muted, 200.0);
-        kbd(ui.painter(), pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, "Ctrl K");
+        let kw = if sw >= 240.0 { kbd(ui.painter(), pos2(r.right() - 10.0, r.center().y), Align2::RIGHT_CENTER, "Ctrl K").width() + 14.0 } else { 0.0 };
+        text(ui.painter(), pos2(r.left() + 34.0, r.center().y), Align2::LEFT_CENTER, &tr!("dash.search"), serif(13.0, W::Italic), p.muted, sw - 44.0 - kw);
         a11y(&resp, egui::accesskit::Role::Button, &tr!("dash.open_palette"), None);
         if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
             open_palette = true;
@@ -77,8 +79,10 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
         welcome(app, ui, content);
         return;
     }
-    let right_w = 300.0;
-    let left = Rect::from_min_max(content.min, pos2(content.right() - right_w - 20.0, content.bottom()));
+    // Janela estreita (metade da tela): uma coluna só, sem recentes e previsão.
+    let narrow = content.width() < 820.0;
+    let right_w = if narrow { 0.0 } else { 300.0 };
+    let left = Rect::from_min_max(content.min, pos2(content.right() - right_w - if narrow { 0.0 } else { 20.0 }, content.bottom()));
     let right = Rect::from_min_max(pos2(content.right() - right_w, content.top()), content.max);
 
     // ── Hoje ──
@@ -93,19 +97,32 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
     let num_pos = tl + vec2(0.0, 18.0);
     ui.painter().galley(num_pos, num.clone(), p.text);
     let after = pos2(num_pos.x + num.size().x + 14.0, num_pos.y + num.size().y - 22.0);
-    let r = text(ui.painter(), after, Align2::LEFT_CENTER, &tr_n!("dash.cards_to_study", total), serif(17.0, W::Regular), p.text2, 300.0);
-    let mins = app.minutes_for(total);
-    text(ui.painter(), pos2(r.right() + 6.0, after.y), Align2::LEFT_CENTER, &tr!("dash.about_minutes", n = mins.max(if total > 0 { 1 } else { 0 })), serif(17.0, W::Italic), p.muted, 200.0);
+    // Os textos param antes da coluna dos botões (janela estreita).
+    let col = Rect::from_min_size(pos2(today_rect.right() - 24.0 - 220.0, today_rect.top() + 22.0), vec2(220.0, 106.0));
+    let limit = col.left() - 12.0;
+    let label = tr_n!("dash.cards_to_study", total);
+    let font = serif(17.0, W::Regular);
+    if after.x + text_width(ui.painter(), &label, font.clone()) <= limit {
+        let r = text(ui.painter(), after, Align2::LEFT_CENTER, &label, font, p.text2, 300.0);
+        let mins = app.minutes_for(total);
+        let m = tr!("dash.about_minutes", n = mins.max(if total > 0 { 1 } else { 0 }));
+        if r.right() + 6.0 + text_width(ui.painter(), &m, serif(17.0, W::Italic)) <= limit {
+            text(ui.painter(), pos2(r.right() + 6.0, after.y), Align2::LEFT_CENTER, &m, serif(17.0, W::Italic), p.muted, 200.0);
+        }
+    }
     let mut x = tl.x;
     let y = today_rect.bottom() - 26.0;
     for (n, key, col) in [(c.review, "dash.review", p.good), (c.new, "dash.new", p.easy), (c.learn, "dash.learning", p.hard)] {
         let label = &tr!(key);
+        let need = 15.0 + text_width(ui.painter(), &format!("{n} {label}"), serif(13.0, W::Regular)) + 6.0;
+        if x + need > limit {
+            break;
+        }
         ui.painter().circle_filled(pos2(x + 4.0, y), 4.0, col);
         let r1 = text(ui.painter(), pos2(x + 15.0, y), Align2::LEFT_CENTER, &n.to_string(), serif(13.0, W::Semi), p.text, 60.0);
         let r2 = text(ui.painter(), pos2(r1.right() + 5.0, y), Align2::LEFT_CENTER, label, serif(13.0, W::Regular), p.muted, 120.0);
         x = r2.right() + 22.0;
     }
-    let col = Rect::from_min_size(pos2(today_rect.right() - 24.0 - 220.0, today_rect.top() + 22.0), vec2(220.0, 106.0));
     let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(col).layout(egui::Layout::top_down(egui::Align::Center)));
     cu.spacing_mut().item_spacing.y = 10.0;
     if button_sized(&mut cu, &tr!("dash.study_all"), Some(&tr!("common.key_space")), Btn::Primary, vec2(220.0, 46.0), total > 0).clicked() {
@@ -118,7 +135,7 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
     text(cu.painter(), pos2(col.center().x, col.bottom() - 4.0), Align2::CENTER_CENTER, &avg, serif(11.5, W::Italic), p.muted, 240.0);
 
     // ── Disciplinas ──
-    let per_row = 4usize;
+    let per_row = if left.width() >= 640.0 { 4usize } else { 2 };
     let subjects = app.subjects.clone();
     let rows = subjects.len().div_ceil(per_row);
     let gap = 12.0;
@@ -171,6 +188,9 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
     }
 
     // ── Coluna direita ──
+    if narrow {
+        return;
+    }
     let recent_h: f32 = 66.0 + 5.0 * 52.0;
     let rec = Rect::from_min_size(right.min, vec2(right.width(), recent_h.min(right.height() * 0.62)));
     recent_card(app, ui, rec);
@@ -237,9 +257,22 @@ fn heat_card(app: &App, ui: &mut Ui, r: Rect) {
     use chrono::Datelike;
     let wd_today = chrono::Local::now().weekday().num_days_from_sunday() as i64;
     let weeks = 53usize;
-    let gap = 2.0;
     let avail_w = r.width() - 40.0;
-    let cell = ((avail_w - gap * (weeks as f32 - 1.0)) / weeks as f32).clamp(6.0, 13.0);
+    // Os quadradinhos crescem com o cartão (até 24 px), limitados pela largura
+    // e pela altura; a linha de números embaixo só entra se sobrar espaço.
+    let stats_h = 64.0;
+    let room_h = r.height() - 64.0 - 20.0;
+    let fit = |gap: f32, h: f32| ((avail_w - gap * (weeks as f32 - 1.0)) / weeks as f32).min((h - 6.0 * gap) / 7.0);
+    let size = |h: f32| {
+        let gap = if fit(3.0, h) >= 16.0 { 3.0 } else { 2.0 };
+        (gap, fit(gap, h).clamp(6.0, 24.0))
+    };
+    // Os números entram se, com eles, a grade ainda tiver pelo menos o
+    // tamanho que a largura permite (ou 10 px).
+    let (g0, c0) = size(room_h);
+    let (g1, c1) = size(room_h - stats_h - 24.0);
+    let with_stats = c1 >= c0.min(10.0) && room_h - stats_h - 24.0 >= 7.0 * c1 + 6.0 * g1;
+    let (gap, cell) = if with_stats { (g1, c1) } else { (g0, c0) };
     let grid_h = 7.0 * cell + 6.0 * gap;
     let max = app.dash.heat.values().copied().max().unwrap_or(1).max(1) as f32;
     let mut levels = vec![[255u8; 7]; weeks];
@@ -255,7 +288,11 @@ fn heat_card(app: &App, ui: &mut Ui, r: Rect) {
         }
     }
     let grid_w = weeks as f32 * (cell + gap) - gap;
-    let origin = pos2(r.left() + 20.0, (r.top() + 64.0).min(r.bottom() - 14.0 - grid_h));
+    // Centralizado na largura; grade e números juntos no meio da altura livre.
+    let block_h = grid_h + if with_stats { 24.0 + stats_h } else { 0.0 };
+    let free = (room_h - block_h).max(0.0);
+    let x0 = r.left() + 20.0 + ((avail_w - grid_w) / 2.0).max(0.0);
+    let origin = pos2(x0, (r.top() + 64.0 + free / 2.0).min(r.bottom() - 14.0 - grid_h));
     // Meses.
     let mut last_month = None;
     for w in 0..weeks {
@@ -270,7 +307,45 @@ fn heat_card(app: &App, ui: &mut Ui, r: Rect) {
         }
     }
     charts::heatmap(ui.painter(), origin, &levels, cell, gap);
-    let _ = grid_w;
+    if with_stats {
+        let row = Rect::from_min_size(pos2(x0, origin.y + grid_h + 24.0), vec2(grid_w, stats_h));
+        heat_stats(app, ui, row);
+    }
+}
+
+/// Números do ano embaixo do mapa: sequência atual e maior, média por dia
+/// estudado e o dia com mais revisões.
+fn heat_stats(app: &App, ui: &Ui, row: Rect) {
+    let p = pal();
+    let heat = &app.dash.heat;
+    let mut days: Vec<i64> = heat.iter().filter(|(_, n)| **n > 0).map(|(d, _)| *d).collect();
+    days.sort_unstable();
+    let (mut best, mut run, mut prev) = (0u32, 0u32, None::<i64>);
+    for d in &days {
+        run = if prev == Some(d - 1) { run + 1 } else { 1 };
+        best = best.max(run);
+        prev = Some(*d);
+    }
+    let total: u32 = heat.values().sum();
+    let avg = if days.is_empty() { 0.0 } else { total as f64 / days.len() as f64 };
+    let top = heat.iter().max_by_key(|(d, n)| (**n, **d)).filter(|(_, n)| **n > 0);
+    let top_s = top.map(|(d, n)| {
+        let date = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap() + chrono::Duration::days(*d);
+        (n.to_string(), tr!("dash.heat_best_day_on", date = date.format(&tr!("dash.heat_date")).to_string()))
+    });
+    let items = [
+        (tr_n!("dash.heat_days", app.streak as usize), tr!("dash.heat_streak")),
+        (tr_n!("dash.heat_days", best as usize), tr!("dash.heat_best_streak")),
+        (crate::srs::decimal(avg, 1), tr!("dash.heat_avg")),
+        top_s.unwrap_or_else(|| ("—".into(), tr!("dash.heat_best_day"))),
+    ];
+    let cw = row.width() / items.len() as f32;
+    ui.painter().hline(row.x_range(), row.top() - 12.0, Stroke::new(1.0, p.line));
+    for (i, (v, l)) in items.into_iter().enumerate() {
+        let x = row.left() + i as f32 * cw;
+        text(ui.painter(), pos2(x, row.top() + 16.0), Align2::LEFT_CENTER, &v, serif(22.0, W::Semi), p.text, cw - 12.0);
+        text(ui.painter(), pos2(x, row.top() + 44.0), Align2::LEFT_CENTER, &l, serif(12.0, W::Regular), p.muted, cw - 12.0);
+    }
 }
 
 fn recent_card(app: &mut App, ui: &mut Ui, r: Rect) {

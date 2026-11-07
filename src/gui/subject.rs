@@ -82,7 +82,6 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64, current: Tab) {
     ui.painter().rect_filled(icon, CornerRadius::same(10), color);
     let initial: String = subject.name.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
     text(ui.painter(), icon.center(), Align2::CENTER_CENTER, &initial, serif(20.0, W::SemiItalic), p.window, 40.0);
-    text(ui.painter(), pos2(icon.right() + 14.0, icon.top() + 11.0), Align2::LEFT_CENTER, &subject.name, serif(22.0, W::Semi), p.text, 500.0);
     let roots = decks.iter().filter(|d| d.parent_id.is_none()).count();
     let preset = roots.checked_sub(1).and_then(|_| decks.iter().find(|d| d.parent_id.is_none())).map(|d| app.preset_of_deck(d.id).clone());
     let preset_txt = preset
@@ -96,7 +95,6 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64, current: Tab) {
         })
         .unwrap_or_default();
     let sub = tr_n!("subject.summary", decks.len(), cards = thousands(cache.cards as i64), preset = preset_txt);
-    text(ui.painter(), pos2(icon.right() + 14.0, icon.top() + 31.0), Align2::LEFT_CENTER, &sub, serif(13.0, W::Regular), p.muted, 600.0);
     let btn_area = Rect::from_min_max(pos2(head.right() - 520.0, icon.top()), pos2(head.right() - 28.0, icon.bottom()));
     let mut bu = ui.new_child(egui::UiBuilder::new().max_rect(btn_area).layout(egui::Layout::right_to_left(egui::Align::Center)));
     bu.spacing_mut().item_spacing.x = 10.0;
@@ -114,6 +112,10 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64, current: Tab) {
             app.note_editor = Some(super::note_editor::NoteEditor::new_note(d, None));
         }
     }
+    // Nome e resumo usam o espaço até os botões (janela estreita).
+    let name_w = (bu.min_rect().left() - icon.right() - 30.0).max(80.0);
+    text(ui.painter(), pos2(icon.right() + 14.0, icon.top() + 11.0), Align2::LEFT_CENTER, &subject.name, serif(22.0, W::Semi), p.text, name_w.min(500.0));
+    text(ui.painter(), pos2(icon.right() + 14.0, icon.top() + 31.0), Align2::LEFT_CENTER, &sub, serif(13.0, W::Regular), p.muted, name_w.min(600.0));
     let tabs = Rect::from_min_size(pos2(x0, head.bottom() - 41.0), vec2(520.0, 40.0));
     let mut tu = ui.new_child(egui::UiBuilder::new().max_rect(tabs).layout(egui::Layout::left_to_right(egui::Align::Center)));
     tu.spacing_mut().item_spacing.x = 24.0;
@@ -188,10 +190,12 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64, current: Tab) {
     // ── Tabela de baralhos ──
     let table = Rect::from_min_max(pos2(content.left(), top.bottom() + 18.0), content.max);
     paint_card(ui.painter(), table);
-    let cols = [table.right() - 18.0 - 150.0 - 90.0 - 110.0 - 90.0, 90.0, 110.0, 90.0, 150.0];
+    // Colunas mais estreitas em janela estreita, para o nome do baralho caber.
+    let (act, c1, c2) = if table.width() < 640.0 { (96.0, 108.0, 82.0) } else { (150.0, 110.0, 90.0) };
+    let cols = [table.right() - 18.0 - act - c1 - c2 - c1, c1, c2, c1, act];
     let hy = table.top() + 20.0;
     caps(ui.painter(), pos2(table.left() + 18.0, hy), Align2::LEFT_CENTER, &tr!("deck.deck"), p.dim);
-    let xs = [table.right() - 18.0 - 150.0 - 110.0 - 90.0, table.right() - 18.0 - 150.0 - 90.0, table.right() - 18.0 - 150.0];
+    let xs = [table.right() - 18.0 - act - c1 - c2, table.right() - 18.0 - act - c2, table.right() - 18.0 - act];
     caps(ui.painter(), pos2(xs[0], hy), Align2::RIGHT_CENTER, &tr!("deck.new"), p.dim);
     caps(ui.painter(), pos2(xs[1], hy), Align2::RIGHT_CENTER, &tr!("deck.learning"), p.dim);
     caps(ui.painter(), pos2(xs[2], hy), Align2::RIGHT_CENTER, &tr!("deck.review"), p.dim);
@@ -268,7 +272,7 @@ fn deck_row(app: &mut App, ui: &mut Ui, d: &Deck, lvl: usize, all: &[Deck], xs: 
     for (i, (v, col)) in [(c.new, p.easy), (c.learn, p.hard), (c.review, p.good)].into_iter().enumerate() {
         text(ui.painter(), pos2(xs[i], rect.center().y), Align2::RIGHT_CENTER, &v.to_string(), serif(14.0, W::Regular), if v > 0 { col } else { p.dim }, 60.0);
     }
-    let actions = Rect::from_min_max(pos2(rect.right() - 168.0, rect.top()), pos2(rect.right() - 17.0, rect.bottom()));
+    let actions = Rect::from_min_max(pos2(rect.right() - if rect.width() < 640.0 { 112.0 } else { 168.0 }, rect.top()), pos2(rect.right() - 17.0, rect.bottom()));
     let mut au = ui.new_child(egui::UiBuilder::new().max_rect(actions).layout(egui::Layout::right_to_left(egui::Align::Center)));
     au.spacing_mut().item_spacing.x = 6.0;
     let more = icon_button(&mut au, "⋯", &tr!("deck.options"), 28.0);

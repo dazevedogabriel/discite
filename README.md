@@ -162,6 +162,10 @@ your data lives in one SQLite file on your machine.
   Claude Design canvas. Literata and JetBrains Mono fonts are built in.
 - On Windows and Linux, a custom title bar. On macOS, the native one, with
   shortcuts shown with ⌘.
+- The window shrinks down to half a laptop screen (680 px wide), so it fits
+  macOS Split View and side-by-side tiling, and Windows snap. In a narrow
+  window the sidebar collapses (» still opens it), the dashboard and
+  statistics go to fewer columns, and side panels step aside.
 - English and Brazilian Portuguese are built in. More languages can be added
   as plain XML files (see [Translations](#-translations)).
 

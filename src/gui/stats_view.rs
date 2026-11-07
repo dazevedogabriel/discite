@@ -127,9 +127,12 @@ pub fn ui(app: &mut App, ui: &mut Ui, fixed_subject: Option<i64>) {
         kpis(ui, &data, w);
         let grid_h = ((content.height() - 70.0 - 28.0) / 2.0).clamp(200.0, 300.0);
         let gap = 14.0;
-        let cw = (w - 2.0 * gap) / 3.0;
-        let (g, _) = ui.allocate_exact_size(vec2(w, grid_h * 2.0 + gap), Sense::hover());
-        let cell = |i: usize| Rect::from_min_size(pos2(g.left() + (i % 3) as f32 * (cw + gap), g.top() + (i / 3) as f32 * (grid_h + gap)), vec2(cw, grid_h));
+        // Janela estreita: duas colunas (três linhas) em vez de três.
+        let per_row = if w < 760.0 { 2 } else { 3 };
+        let rows = 6usize.div_ceil(per_row);
+        let cw = (w - (per_row - 1) as f32 * gap) / per_row as f32;
+        let (g, _) = ui.allocate_exact_size(vec2(w, grid_h * rows as f32 + gap * (rows - 1) as f32), Sense::hover());
+        let cell = |i: usize| Rect::from_min_size(pos2(g.left() + (i % per_row) as f32 * (cw + gap), g.top() + (i / per_row) as f32 * (grid_h + gap)), vec2(cw, grid_h));
         daily_card(ui, cell(0), &data);
         forecast_card(ui, cell(1), &data);
         calibration_card(ui, cell(2), &data);
@@ -143,9 +146,11 @@ pub fn ui(app: &mut App, ui: &mut Ui, fixed_subject: Option<i64>) {
 
 fn kpis(ui: &mut Ui, d: &Data, w: f32) {
     let p = pal();
-    let (row, _) = ui.allocate_exact_size(vec2(w, 70.0), Sense::hover());
+    // Janela estreita: 2 × 2 em vez de uma linha de quatro.
+    let per = if w < 640.0 { 2 } else { 4 };
     let gap = 12.0;
-    let cw = (w - 3.0 * gap) / 4.0;
+    let (row, _) = ui.allocate_exact_size(vec2(w, if per == 2 { 70.0 * 2.0 + gap } else { 70.0 }), Sense::hover());
+    let cw = (w - (per - 1) as f32 * gap) / per as f32;
     let h = d.ov.time_ms / 3_600_000;
     let m = (d.ov.time_ms / 60_000) % 60;
     let time = if h > 0 { tr!("stats.time_h", h = h, m = format!("{m:02}")) } else { tr!("time.minutes", n = m) };
@@ -158,7 +163,7 @@ fn kpis(ui: &mut Ui, d: &Data, w: f32) {
         (tr!("stats.retained"), thousands(d.retained.0.round() as i64), tr!("stats.this_month", delta = format!("{}{}", if delta >= 0.0 { "+" } else { "" }, delta.round())), if delta >= 0.0 { p.good } else { p.again }),
     ];
     for (i, (lab, val, sub, sc)) in items.into_iter().enumerate() {
-        let r = Rect::from_min_size(pos2(row.left() + i as f32 * (cw + gap), row.top()), vec2(cw, 70.0));
+        let r = Rect::from_min_size(pos2(row.left() + (i % per) as f32 * (cw + gap), row.top() + (i / per) as f32 * (70.0 + gap)), vec2(cw, 70.0));
         paint_card(ui.painter(), r);
         caps(ui.painter(), pos2(r.left() + 16.0, r.top() + 18.0), Align2::LEFT_CENTER, &lab, p.dim);
         let v = text(ui.painter(), pos2(r.left() + 16.0, r.top() + 45.0), Align2::LEFT_CENTER, &val, serif(26.0, W::Semi), p.text, cw * 0.6);

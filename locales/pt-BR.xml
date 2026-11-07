@@ -159,6 +159,13 @@
   <string key="dash.year_reviews">Revisões no último ano</string>
   <string key="dash.year_summary">{reviews} revisões · {days} dias estudados</string>
   <string key="dash.more">mais</string>
+  <plural key="dash.heat_days"><one>{n} dia</one><other>{n} dias</other></plural>
+  <string key="dash.heat_streak">sequência atual</string>
+  <string key="dash.heat_best_streak">maior sequência no ano</string>
+  <string key="dash.heat_avg">revisões por dia estudado</string>
+  <string key="dash.heat_best_day">dia mais forte</string>
+  <string key="dash.heat_best_day_on">revisões em {date} (recorde)</string>
+  <string key="dash.heat_date">%d/%m</string>
   <string key="dash.less">menos</string>
   <string key="dash.recent_pages">Páginas recentes</string>
   <string key="dash.no_pages">Nenhuma página ainda.</string>

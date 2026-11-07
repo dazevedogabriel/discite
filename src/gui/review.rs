@@ -514,7 +514,8 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
     if has_cur && button_kbd(&mut ru, &tr!("review.edit"), Some("E"), Btn::Ghost, 34.0).clicked() {
         open_edit(app);
     }
-    if let Some(cur) = app.session.as_ref().and_then(|s| s.current.as_ref()) {
+    // Em janela estreita o cronômetro sai: ele ficaria por cima dos contadores.
+    if let Some(cur) = app.session.as_ref().and_then(|s| s.current.as_ref()).filter(|_| bar.width() >= 900.0) {
         let secs = cur.shown.elapsed().as_secs().min(app.cfg.answer_cap_secs as u64);
         ru.add_space(8.0);
         let (r, _) = ru.allocate_exact_size(vec2(40.0, 20.0), Sense::hover());

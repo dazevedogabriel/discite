@@ -167,6 +167,13 @@
   <string key="dash.year_reviews">Reviews in the last year</string>
   <string key="dash.year_summary">{reviews} reviews · {days} days studied</string>
   <string key="dash.more">more</string>
+  <plural key="dash.heat_days"><one>{n} day</one><other>{n} days</other></plural>
+  <string key="dash.heat_streak">current streak</string>
+  <string key="dash.heat_best_streak">longest streak this year</string>
+  <string key="dash.heat_avg">reviews per study day</string>
+  <string key="dash.heat_best_day">best day</string>
+  <string key="dash.heat_best_day_on">reviews on {date} (best)</string>
+  <string key="dash.heat_date">%b %d</string>
   <string key="dash.less">less</string>
   <string key="dash.recent_pages">Recent pages</string>
   <string key="dash.no_pages">No pages yet.</string>

@@ -16,7 +16,8 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
     let area = ui.available_rect_before_wrap();
     let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(area.shrink2(vec2(28.0, 20.0))).layout(egui::Layout::top_down(egui::Align::Min)));
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(&mut cu, |ui| {
-        ui.set_max_width(760.0);
+        // Até 760 px, mas nunca mais que a janela (janela estreita).
+        ui.set_max_width(ui.available_width().min(760.0));
         ui.spacing_mut().item_spacing.y = 16.0;
         section(ui, &tr!("settings.appearance"), |ui| {
             row(ui, &tr!("app.language"), |ui| {

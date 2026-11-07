@@ -210,19 +210,24 @@ fn body(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui, rect: Rect, close: &mut
 
     // ── Corpo ──
     let mid = Rect::from_min_max(pos2(rect.left(), head.bottom()), pos2(rect.right(), foot.top()));
-    let right_w = 380.0;
+    // Janela estreita: sem a coluna de pré-visualização, os campos usam a largura toda.
+    let right_w = if mid.width() < 820.0 { 0.0 } else { 380.0 };
     let left = Rect::from_min_max(mid.min, pos2(mid.right() - right_w, mid.bottom()));
     let right = Rect::from_min_max(pos2(mid.right() - right_w, mid.top()), mid.max);
-    ui.painter().rect_filled(right, CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, p.card);
-    ui.painter().vline(left.right(), left.y_range(), Stroke::new(1.0, p.line));
+    if right_w > 0.0 {
+        ui.painter().rect_filled(right, CornerRadius { nw: 0, ne: 0, sw: 0, se: 0 }, p.card);
+        ui.painter().vline(left.right(), left.y_range(), Stroke::new(1.0, p.line));
+    }
 
     let mut lu = ui.new_child(egui::UiBuilder::new().max_rect(left.shrink2(vec2(26.0, 20.0))).layout(egui::Layout::top_down(egui::Align::Min)));
     egui::ScrollArea::vertical().id_salt("ne_left").auto_shrink([false, false]).show(&mut lu, |ui| {
         ui.spacing_mut().item_spacing.y = 16.0;
         left_column(app, ed, ui);
     });
-    let mut ru = ui.new_child(egui::UiBuilder::new().max_rect(right.shrink2(vec2(22.0, 20.0))).layout(egui::Layout::top_down(egui::Align::Min)));
-    preview(app, ed, &mut ru);
+    if right_w > 0.0 {
+        let mut ru = ui.new_child(egui::UiBuilder::new().max_rect(right.shrink2(vec2(22.0, 20.0))).layout(egui::Layout::top_down(egui::Align::Min)));
+        preview(app, ed, &mut ru);
+    }
 }
 
 fn left_column(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui) {

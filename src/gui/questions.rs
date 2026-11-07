@@ -107,11 +107,16 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64) {
     caps(ui.painter(), r2.min + vec2(18.0, 20.0), Align2::LEFT_CENTER, &tr!("quiz.today"), p.dim);
     let today = sum.due + sum.new;
     let g = text(ui.painter(), r2.min + vec2(18.0, 48.0), Align2::LEFT_CENTER, &today.to_string(), serif(30.0, W::Semi), p.text, 120.0);
-    text(ui.painter(), pos2(g.right() + 10.0, r2.top() + 52.0), Align2::LEFT_CENTER, &tr!("quiz.today_breakdown", due = tr_n!("quiz.n_due", sum.due as usize), new = tr_n!("quiz.n_new", sum.new as usize)), serif(12.5, W::Regular), p.muted, cw - g.width() - 130.0);
-    let br = Rect::from_min_size(pos2(r2.right() - 18.0 - 96.0, r2.top() + 34.0), vec2(96.0, 30.0));
-    let mut bu = ui.new_child(egui::UiBuilder::new().max_rect(br));
-    if button_sized(&mut bu, &tr!("quiz.review"), None, Btn::Secondary, vec2(96.0, 30.0), today > 0).clicked() {
-        app.modal = Some(Modal::QuizSetup(Box::new(Setup::new(sid, None, Pick::Due))));
+    // O botão Revisar só cabe no cartão largo (o cabeçalho já tem "Resolver questões").
+    let review_btn = cw >= 300.0;
+    let breakdown = tr!("quiz.today_breakdown", due = tr_n!("quiz.n_due", sum.due as usize), new = tr_n!("quiz.n_new", sum.new as usize));
+    text(ui.painter(), pos2(g.right() + 10.0, r2.top() + 52.0), Align2::LEFT_CENTER, &breakdown, serif(12.5, W::Regular), p.muted, cw - g.width() - if review_btn { 130.0 } else { 40.0 });
+    if review_btn {
+        let br = Rect::from_min_size(pos2(r2.right() - 18.0 - 96.0, r2.top() + 34.0), vec2(96.0, 30.0));
+        let mut bu = ui.new_child(egui::UiBuilder::new().max_rect(br));
+        if button_sized(&mut bu, &tr!("quiz.review"), None, Btn::Secondary, vec2(96.0, 30.0), today > 0).clicked() {
+            app.modal = Some(Modal::QuizSetup(Box::new(Setup::new(sid, None, Pick::Due))));
+        }
     }
     text(ui.painter(), r2.min + vec2(18.0, 76.0), Align2::LEFT_CENTER, &tr_n!("quiz.wrong_waiting", sum.wrong as usize), serif(12.0, W::Italic), p.muted, cw - 36.0);
 
@@ -128,7 +133,9 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64) {
     let table = Rect::from_min_max(pos2(content.left(), r1.bottom() + 18.0), content.max);
     paint_card(ui.painter(), table);
     let hy = table.top() + 20.0;
-    let xs = [table.right() - 18.0 - 150.0 - 300.0, table.right() - 18.0 - 150.0 - 200.0, table.right() - 18.0 - 150.0 - 100.0, table.right() - 18.0 - 150.0];
+    // Colunas mais estreitas em janela estreita, para o nome do banco caber.
+    let (act, step) = if table.width() < 640.0 { (96.0, 72.0) } else { (150.0, 100.0) };
+    let xs = [table.right() - 18.0 - act - 3.0 * step, table.right() - 18.0 - act - 2.0 * step, table.right() - 18.0 - act - step, table.right() - 18.0 - act];
     caps(ui.painter(), pos2(table.left() + 18.0, hy), Align2::LEFT_CENTER, &tr!("quiz.bank"), p.dim);
     for (x, k) in xs.iter().zip(["quiz.col_total", "quiz.col_new", "quiz.col_due", "quiz.col_accuracy"]) {
         caps(ui.painter(), pos2(*x, hy), Align2::RIGHT_CENTER, &tr!(k), p.dim);
@@ -157,7 +164,7 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64) {
         if c.banks.is_empty() {
             ui.add_space(30.0);
             ui.vertical_centered(|ui| {
-                ui.set_max_width(520.0);
+                ui.set_max_width(ui.available_width().min(520.0));
                 para(ui, &tr!("quiz.none"), serif(14.0, W::Italic), p.muted);
             });
         }
@@ -171,7 +178,11 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64) {
     }
     let ai = button(&mut fu, &format!("{}  ▾", tr!("quiz.generate_ai")), Btn::Ghost, 30.0);
     ai_pages_menu(app, &ai, sid, None);
-    text(fu.painter(), pos2(foot.right(), foot.center().y), Align2::RIGHT_CENTER, &tr!("quiz.footer_tip"), serif(12.0, W::Italic), p.muted, 420.0);
+    // A dica do rodapé só aparece se couber ao lado dos botões.
+    let room = foot.right() - fu.min_rect().right() - 20.0;
+    if room >= 200.0 {
+        text(fu.painter(), pos2(foot.right(), foot.center().y), Align2::RIGHT_CENTER, &tr!("quiz.footer_tip"), serif(12.0, W::Italic), p.muted, room.min(420.0));
+    }
 }
 
 /// Menu com as páginas da disciplina: a escolhida abre a IA em modo questões.
@@ -222,7 +233,7 @@ fn bank_row(app: &mut App, ui: &mut Ui, b: &Bank, c: Counts, xs: [f32; 4]) {
     for (i, (v, col, on)) in cols.into_iter().enumerate() {
         text(ui.painter(), pos2(xs[i], rect.center().y), Align2::RIGHT_CENTER, &v, serif(14.0, W::Regular), if on { col } else { p.dim }, 80.0);
     }
-    let actions = Rect::from_min_max(pos2(rect.right() - 168.0, rect.top()), pos2(rect.right() - 17.0, rect.bottom()));
+    let actions = Rect::from_min_max(pos2(rect.right() - if rect.width() < 640.0 { 112.0 } else { 168.0 }, rect.top()), pos2(rect.right() - 17.0, rect.bottom()));
     let mut au = ui.new_child(egui::UiBuilder::new().max_rect(actions).layout(egui::Layout::right_to_left(egui::Align::Center)));
     au.spacing_mut().item_spacing.x = 6.0;
     let more = icon_button(&mut au, "⋯", &tr!("quiz.bank_options"), 28.0);

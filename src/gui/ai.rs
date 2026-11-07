@@ -754,7 +754,7 @@ fn empty_state(r: &Review, ui: &mut Ui) {
     };
     ui.add_space(40.0);
     ui.vertical_centered(|ui| {
-        ui.set_max_width(460.0);
+        ui.set_max_width(ui.available_width().min(460.0));
         para(ui, &s, serif(14.0, W::Italic), p.muted);
     });
 }
@@ -763,7 +763,7 @@ fn empty_state(r: &Review, ui: &mut Ui) {
 fn setup(app: &mut App, ui: &mut Ui) {
     let p = pal();
     ui.spacing_mut().item_spacing.y = 12.0;
-    ui.set_max_width(720.0);
+    ui.set_max_width(ui.available_width().min(720.0));
     label(ui, &tr!("ai.setup_title"), serif(17.0, W::Semi), p.text);
     para(ui, &tr!("ai.setup_text"), serif(13.5, W::Regular), p.text2);
     model_list(app, ui);

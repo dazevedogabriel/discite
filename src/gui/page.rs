@@ -344,7 +344,8 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64) {
     let p = pal();
     let full = ui.max_rect();
     let focus_mode = app.page.as_ref().is_some_and(|e| e.focus_mode);
-    let tree_w = if focus_mode { 0.0 } else { 214.0 };
+    // Janela estreita (metade da tela): a árvore de páginas afina.
+    let tree_w = if focus_mode { 0.0 } else if full.width() < 760.0 { 176.0 } else { 214.0 };
     let aside_w = if focus_mode || full.width() < 1000.0 { 0.0 } else { 248.0 };
     if tree_w > 0.0 {
         let tree = Rect::from_min_size(full.min, vec2(tree_w, full.height()));
@@ -930,14 +931,17 @@ fn toolbar(ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: &mut Vec<Action
     let show_insert = w >= 870.0;
     let show_lists = w >= 612.0;
     let show_code = w >= 470.0;
-    let kind_w = if show_insert { 168.0 } else { 132.0 };
+    // Bem estreito, o tipo do bloco vira só "¶ ▾".
+    let tiny = w < 420.0;
+    let kind_w = if show_insert { 168.0 } else if tiny { 46.0 } else { 132.0 };
     let mut tu = ui.new_child(egui::UiBuilder::new().max_rect(bar.shrink2(vec2(14.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
     tu.set_clip_rect(bar);
     tu.spacing_mut().item_spacing.x = 2.0;
     let fidx = ed.focus.and_then(|id| ed.idx(id));
     let cur_kind = fidx.map(|i| ed.blocks[i].kind).unwrap_or(BlockKind::Paragraph);
     let label_kind = if cur_kind.is_text() { cur_kind.label() } else { BlockKind::Paragraph.label() };
-    let kr = button_sized(&mut tu, &format!("{label_kind}  ▾"), None, Btn::Ghost, vec2(kind_w, 30.0), true);
+    let kind_text = if tiny { "¶ ▾".to_owned() } else { format!("{label_kind}  ▾") };
+    let kr = button_sized(&mut tu, &kind_text, None, Btn::Ghost, vec2(kind_w, 30.0), true).on_hover_text(label_kind.clone());
     egui::Popup::menu(&kr).frame(popup_frame()).width(220.0).show(|ui| {
         for k in [BlockKind::Paragraph, BlockKind::H1, BlockKind::H2, BlockKind::H3, BlockKind::Bullet, BlockKind::Numbered, BlockKind::Check, BlockKind::Quote, BlockKind::Callout, BlockKind::Code, BlockKind::Formula] {
             if menu_item(ui, &k.label(), k == cur_kind).clicked() {
