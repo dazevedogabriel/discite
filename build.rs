@@ -18,6 +18,10 @@ fn main() {
     std::fs::write(out.join("icon-256.png"), &pngs.last().unwrap().1).unwrap();
     // Ícone do app no macOS; o workflow de build procura `Discite.icns` em OUT_DIR.
     std::fs::write(out.join("Discite.icns"), icns_bytes(&tree)).unwrap();
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        link_clang_runtime();
+        return;
+    }
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
@@ -30,6 +34,27 @@ fn main() {
     if let Err(e) = res.compile() {
         // Sem rc.exe o programa funciona igual, só sem ícone no Explorer.
         println!("cargo:warning=ícone não embutido: {e}");
+    }
+}
+
+/// O Metal do llama.cpp usa `@available(macOS …)`, que vira uma chamada a
+/// `__isPlatformVersionAtLeast` quando o macOS mínimo (MACOSX_DEPLOYMENT_TARGET)
+/// é mais antigo que a versão checada. Essa função mora no runtime do clang
+/// (`libclang_rt.osx.a`), que o Rust não liga sozinho (usa -nodefaultlibs).
+fn link_clang_runtime() {
+    let out = std::process::Command::new("xcrun").args(["clang", "--print-resource-dir"]).output();
+    let dir = match out {
+        Ok(o) if o.status.success() => PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()).join("lib").join("darwin"),
+        _ => {
+            println!("cargo:warning=xcrun clang não encontrado: runtime do clang não ligado");
+            return;
+        }
+    };
+    if dir.join("libclang_rt.osx.a").exists() {
+        println!("cargo:rustc-link-search=native={}", dir.display());
+        println!("cargo:rustc-link-lib=static=clang_rt.osx");
+    } else {
+        println!("cargo:warning=libclang_rt.osx.a não está em {}", dir.display());
     }
 }
 
