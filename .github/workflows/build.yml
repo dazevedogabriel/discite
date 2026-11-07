@@ -134,7 +134,8 @@ jobs:
 
   macos:
     name: macOS (universal)
-    runs-on: macos-14
+    # O GitHub aposentou a imagem macos-14 ("configuration not supported").
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
