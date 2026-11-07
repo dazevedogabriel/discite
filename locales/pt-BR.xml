@@ -113,6 +113,7 @@
   <string key="nav.rename_subject">Renomear ou mudar cor…</string>
   <string key="nav.delete_subject">Excluir disciplina…</string>
   <string key="nav.expand_sidebar">Expandir barra lateral (Ctrl \)</string>
+  <string key="nav.collapse_sidebar">Recolher barra lateral (Ctrl \)</string>
 
   <!-- Common words and buttons -->
   <string key="common.move_up">Mover para cima</string>
@@ -203,6 +204,7 @@
   <string key="page.new_page">Nova página</string>
   <string key="page.notebook">Caderno</string>
   <string key="page.more_options">Mais opções do caderno</string>
+  <string key="page.page_options">Opções da página</string>
   <string key="page.import_markdown">Importar Markdown…</string>
   <string key="page.new_page_hint">Nova página (Ctrl N)</string>
   <plural key="page.count"><one>{n} página</one><other>{n} páginas</other></plural>
@@ -211,7 +213,6 @@
   <string key="page.outdent">Subir um nível</string>
   <string key="page.move_to_subject">Mover para disciplina</string>
   <string key="page.delete">Excluir página…</string>
-  <string key="page.breadcrumb">{subject}  ›  Caderno  ›  </string>
   <string key="page.export">Exportar</string>
   <string key="page.history">Histórico</string>
   <string key="page.focus">Foco</string>
@@ -231,7 +232,6 @@
   <string key="page.underline">Sublinhado (Ctrl U)</string>
   <string key="page.strike">Tachado</string>
   <string key="page.inline_code">Código inline (Ctrl E)</string>
-  <string key="page.highlight">Realce (Ctrl Shift H)</string>
   <string key="page.colors">Cor e realce</string>
   <string key="color.text">Cor do texto</string>
   <string key="color.highlight">Realce</string>
@@ -262,6 +262,7 @@
   <string key="page.flashcard_from_block">Criar flashcard deste bloco</string>
   <string key="page.duplicate">Duplicar</string>
   <string key="page.delete_block">Excluir bloco</string>
+  <plural key="page.delete_n_blocks"><one>Excluir {n} bloco</one><other>Excluir {n} blocos</other></plural>
   <string key="page.image_pick">Clique para escolher uma imagem, cole (Ctrl+V) ou arraste um arquivo</string>
   <string key="page.image_missing">Imagem não encontrada na pasta de mídia</string>
   <string key="page.image_broken">Não foi possível abrir esta imagem</string>

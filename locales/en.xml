@@ -121,6 +121,7 @@
   <string key="nav.rename_subject">Rename or change color…</string>
   <string key="nav.delete_subject">Delete subject…</string>
   <string key="nav.expand_sidebar">Expand sidebar (Ctrl \)</string>
+  <string key="nav.collapse_sidebar">Collapse sidebar (Ctrl \)</string>
 
   <!-- Common words and buttons -->
   <string key="common.move_up">Move up</string>
@@ -211,6 +212,7 @@
   <string key="page.new_page">New page</string>
   <string key="page.notebook">Notebook</string>
   <string key="page.more_options">More notebook options</string>
+  <string key="page.page_options">Page options</string>
   <string key="page.import_markdown">Import Markdown…</string>
   <string key="page.new_page_hint">New page (Ctrl N)</string>
   <plural key="page.count"><one>{n} page</one><other>{n} pages</other></plural>
@@ -219,7 +221,6 @@
   <string key="page.outdent">Move up a level</string>
   <string key="page.move_to_subject">Move to subject</string>
   <string key="page.delete">Delete page…</string>
-  <string key="page.breadcrumb">{subject}  ›  Notebook  ›  </string>
   <string key="page.export">Export</string>
   <string key="page.history">History</string>
   <string key="page.focus">Focus</string>
@@ -239,7 +240,6 @@
   <string key="page.underline">Underline (Ctrl U)</string>
   <string key="page.strike">Strikethrough</string>
   <string key="page.inline_code">Inline code (Ctrl E)</string>
-  <string key="page.highlight">Highlight (Ctrl Shift H)</string>
   <string key="page.colors">Color and highlight</string>
   <string key="color.text">Text color</string>
   <string key="color.highlight">Highlight</string>
@@ -270,6 +270,7 @@
   <string key="page.flashcard_from_block">Create flashcard from this block</string>
   <string key="page.duplicate">Duplicate</string>
   <string key="page.delete_block">Delete block</string>
+  <plural key="page.delete_n_blocks"><one>Delete {n} block</one><other>Delete {n} blocks</other></plural>
   <string key="page.image_pick">Click to choose an image, paste one (Ctrl+V) or drop a file</string>
   <string key="page.image_missing">Image not found in the media folder</string>
   <string key="page.image_broken">Could not open this image</string>

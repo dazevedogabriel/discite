@@ -60,7 +60,10 @@ your data lives in one SQLite file on your machine.
 
 - **Block editor.** Pages and sub-pages per subject, with paragraphs, headings,
   bulleted, numbered and checklists, quotes, callouts, code, formulas, tables,
-  dividers and images.
+  dividers and images. Drag a block's ⠿ handle to move it; with several blocks
+  picked, they all move together, and Delete, Backspace or *Delete blocks* in
+  the ⠿ menu removes them all. Ctrl+Z and Ctrl+Y undo and redo across the
+  whole page, not just the block you are in.
 - **Formulas.** Write LaTeX in a formula block and Discite draws it: fractions,
   roots, powers and indices, Greek letters, sums and integrals, `\text{…}`,
   `\left( … \right)`, matrices, `cases` and `aligned`. Click a formula to edit
@@ -74,8 +77,12 @@ your data lives in one SQLite file on your machine.
   or gray; pick the same color again (or the crossed-out square) to remove it.
   The same button is in the card editor, so cards keep their colors in review.
   In Markdown they read `{red|text}` and `{=green|text}`.
-- **Markdown view.** The **Formatted / Markdown** switch above the page (or
-  Ctrl+Shift+M) shows the Markdown behind it. Edit it there and the formatted
+- **One bar.** Formatting on the left; on the right a dot for the save status,
+  the **Aa / M↓** switch and a **⋯** menu with Focus, History and Export. In a
+  narrow window, the less-used buttons (insert, lists, code and link) move into
+  **More**, so nothing is cut off.
+- **Markdown view.** The **Aa / M↓** switch (or Ctrl+Shift+M) shows the
+  Markdown behind the page. Edit it there and the formatted
   page follows as you type; cards linked to a block stay linked.
 - **Images.** Paste with Ctrl+V, drop a file on the window or pick one from
   disk. Each image is copied into Discite's `media` folder, so the note never
@@ -174,7 +181,7 @@ is built into the executable, and the only connection is the one-time model
 download from Hugging Face.
 
 - **Where it is.** *Generate with AI* at the bottom of the page's right panel
-  (in the toolbar when that panel is hidden), *AI cards from this block* in a
+  (in the ⋯ menu when that panel is hidden), *AI cards from this block* in a
   block's ⠿ menu, the command palette, and **Ctrl+Shift+G**.
 - **Choose what goes in.** With text selected (in a block or in the Markdown
   view), only that passage is used. To pick several blocks, drag a box in the
@@ -346,7 +353,7 @@ On macOS, Ctrl is ⌘.
 | Anywhere | Ctrl K | Command palette |
 | Anywhere | Ctrl N | New page |
 | Anywhere | Ctrl Shift A | Add note |
-| Anywhere | Ctrl \\ | Collapse/expand the sidebar |
+| Anywhere | Ctrl \\ | Collapse/expand the sidebar (also the « and » buttons) |
 | Anywhere | Ctrl F | Search cards |
 | Dashboard | Space | Study all |
 | Review | Space / Enter | Show answer, then Good |
@@ -355,7 +362,8 @@ On macOS, Ctrl is ⌘.
 | Review | E / I / O | Edit, Info, Source |
 | Review | @ / - / * | Suspend, Bury, Flag |
 | Notebook | Ctrl B / I / U / E | Bold, italic, underline, code |
-| Notebook, card editor | Ctrl Shift H | Highlight |
+| Notebook, card editor | Ctrl Shift H | Yellow highlight (the **A** button has the other colors) |
+| Notebook | Ctrl Z / Ctrl Y | Undo / redo across the page |
 | Notebook | Ctrl Shift F | Create flashcard from selection |
 | Notebook | Ctrl Shift G | Generate cards with AI (selection or page) |
 | Notebook | Tab / Shift Tab | Indent / outdent list item |

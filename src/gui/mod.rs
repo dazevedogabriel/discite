@@ -720,6 +720,22 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
         let g2 = line(ui.painter(), "cite", serif(25.0, W::SemiItalic), p.accent, 200.0, -0.5);
         ui.painter().galley(pos2(x0 + g1.size().x, r.top()), g2, p.accent);
         caps_sized(ui.painter(), pos2(x0, r.top() + g1.size().y + 8.0), Align2::LEFT_CENTER, &tr!("app.tagline", version = &VERSION[..3]), 9.5, p.dim);
+        // « recolhe a barra (no caderno, só a do caderno; nas outras telas, a geral).
+        let cr = Rect::from_min_size(pos2(r.right() - 30.0, r.top() + 2.0), vec2(30.0, 30.0));
+        let resp = ui.interact(cr, ui.scope_id().with("collapse_sidebar"), Sense::click());
+        if resp.hovered() {
+            ui.painter().rect_filled(cr, CornerRadius::same(8), p.hover);
+        }
+        text(ui.painter(), cr.center(), Align2::CENTER_CENTER, "«", serif(16.0, W::Regular), if resp.hovered() { p.text } else { p.dim }, 30.0);
+        a11y(&resp, egui::accesskit::Role::Button, &tr!("nav.collapse_sidebar"), None);
+        if resp.on_hover_text(keys(&tr!("nav.collapse_sidebar"))).on_hover_cursor(CursorIcon::PointingHand).clicked() {
+            if matches!(app.screen, Screen::Subject(_, Tab::Notebook)) {
+                app.cfg.notebook_sidebar_open = false;
+            } else {
+                app.cfg.sidebar_collapsed = true;
+            }
+            app.save_settings();
+        }
     }
     ui.add_space(20.0);
 

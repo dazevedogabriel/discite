@@ -56,6 +56,18 @@ pub struct PageEditor {
     band: Option<(egui::Vec2, Vec<i64>)>,
     /// Altura do conteúdo no quadro anterior: o fundo clicável cobre a página toda.
     content_h: f32,
+    /// Desfazer/refazer da página inteira: estados (título, blocos) antes de
+    /// cada grupo de mudanças. O desfazer do próprio campo de texto só via o
+    /// bloco atual.
+    undo: Vec<(String, Vec<Block>)>,
+    redo: Vec<(String, Vec<Block>)>,
+    /// Estado no fim do último quadro com mudança.
+    snap: (String, Vec<Block>),
+    /// Mudanças contadas por `touch` e as já registradas no histórico.
+    edits: u64,
+    seen: u64,
+    /// Grupo atual: o bloco editado (None = mudança de estrutura) e quando.
+    group: Option<(Option<i64>, Instant)>,
     /// Trecho selecionado no modo Markdown (em caracteres).
     source_sel: Option<(usize, usize)>,
 }
@@ -73,8 +85,12 @@ enum Action {
     FocusNext(usize),
     InsertAfter(usize, BlockKind),
     Delete(usize),
+    /// Apaga os blocos escolhidos (ids).
+    DeleteMany(Vec<i64>),
     Duplicate(usize),
     Move(usize, usize),
+    /// Os blocos escolhidos (ids) vão juntos para antes do índice dado.
+    MoveMany(Vec<i64>, usize),
     Convert(usize, BlockKind),
     SlashPick(usize, BlockKind),
     Flashcard(usize),
@@ -107,6 +123,7 @@ impl PageEditor {
         if blocks.is_empty() {
             blocks.push(Block::new(BlockKind::Paragraph, ""));
         }
+        let snap = (meta.title.clone(), blocks.clone());
         Ok(PageEditor {
             title: meta.title.clone(),
             meta,
@@ -134,6 +151,12 @@ impl PageEditor {
             pick_anchor: None,
             band: None,
             content_h: 0.0,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            snap,
+            edits: 0,
+            seen: 0,
+            group: None,
             source_sel: None,
         })
     }
@@ -142,6 +165,66 @@ impl PageEditor {
         self.dirty = true;
         self.unsnapshotted = true;
         self.last_change = Instant::now();
+        self.edits += 1;
+    }
+
+    /// Fim do quadro: se algo mudou, decide se começa um passo novo de
+    /// desfazer. Digitar seguido no mesmo bloco é um passo só; trocar de
+    /// bloco, parar por mais de 1 s ou mexer na estrutura abre outro.
+    fn record_history(&mut self) {
+        if self.edits == self.seen {
+            return;
+        }
+        self.seen = self.edits;
+        let structural = self.blocks.len() != self.snap.1.len() || self.blocks.iter().zip(&self.snap.1).any(|(a, b)| a.id != b.id || a.kind != b.kind);
+        let key = if structural { None } else { self.focus };
+        let now = Instant::now();
+        let same = self.group.is_some_and(|(k, t)| key.is_some() && k == key && now.duration_since(t) < Duration::from_millis(1000));
+        if !same {
+            let before = std::mem::replace(&mut self.snap, (String::new(), Vec::new()));
+            self.undo.push(before);
+            if self.undo.len() > 200 {
+                self.undo.remove(0);
+            }
+            self.redo.clear();
+        }
+        self.group = Some((key, now));
+        self.snap = (self.title.clone(), self.blocks.clone());
+    }
+
+    fn undo(&mut self) {
+        if let Some(prev) = self.undo.pop() {
+            let cur = (self.title.clone(), self.blocks.clone());
+            self.restore(prev, &cur.1);
+            self.redo.push(cur);
+        }
+    }
+
+    fn redo(&mut self) {
+        if let Some(next) = self.redo.pop() {
+            let cur = (self.title.clone(), self.blocks.clone());
+            self.restore(next, &cur.1);
+            self.undo.push(cur);
+        }
+    }
+
+    /// Volta a um estado e põe o cursor no fim do bloco que mudou.
+    fn restore(&mut self, (title, blocks): (String, Vec<Block>), before: &[Block]) {
+        let changed = blocks.iter().find(|b| !before.contains(b)).map(|b| (b.id, b.text.chars().count()));
+        self.title = title;
+        self.blocks = blocks;
+        self.snap = (self.title.clone(), self.blocks.clone());
+        self.group = None;
+        self.touch();
+        self.seen = self.edits;
+        let ids: Vec<i64> = self.blocks.iter().map(|b| b.id).collect();
+        self.picked.retain(|id| ids.contains(id));
+        self.slash = None;
+        self.drag = None;
+        match changed {
+            Some((id, n)) => self.focus_block(id, n, n),
+            None => self.focus = None,
+        }
     }
 
     /// Grava agora, se houver mudanças. Devolve se gravou.
@@ -460,54 +543,34 @@ fn move_to_subject(app: &mut App, all: &[PageMeta], pg: &PageMeta, sid: i64) {
 
 fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
     let p = pal();
-    let subject = app.subject(sid).map(|s| s.name.clone()).unwrap_or_default();
     let Some(mut ed) = app.page.take() else { return };
 
-    // ── Barra superior ──
-    let top = Rect::from_min_size(rect.min, vec2(rect.width(), 48.0));
-    ui.painter().hline(top.x_range(), top.bottom() - 0.5, Stroke::new(1.0, p.line));
-    let crumb = tr!("page.breadcrumb", subject = subject);
-    let r1 = text(ui.painter(), pos2(top.left() + 20.0, top.center().y), Align2::LEFT_CENTER, &crumb, serif(13.0, W::Regular), p.muted, 400.0);
-    text(ui.painter(), pos2(r1.right(), top.center().y), Align2::LEFT_CENTER, &ed.title, serif(13.0, W::Regular), p.text2, (top.width() - r1.width() - 510.0).max(60.0));
-    let mut tu = ui.new_child(egui::UiBuilder::new().max_rect(top.shrink2(vec2(20.0, 0.0))).layout(egui::Layout::right_to_left(egui::Align::Center)));
-    tu.spacing_mut().item_spacing.x = 4.0;
-    if button(&mut tu, &tr!("page.export"), Btn::Ghost, 30.0).clicked() {
-        ed.flush(&app.db);
-        export_markdown(app, &ed);
-    }
-    if button(&mut tu, &tr!("page.history"), Btn::Ghost, 30.0).clicked() {
-        ed.flush(&app.db);
-        ed.snapshot(&app.db);
-        app.modal = Some(super::modals::Modal::Versions(ed.meta.id));
-    }
-    if button(&mut tu, &tr!(if ed.focus_mode { "page.exit_focus" } else { "page.focus" }), Btn::Ghost, 30.0).clicked() {
-        ed.focus_mode = !ed.focus_mode;
-    }
-    tu.add_space(4.0);
-    // Texto formatado ou o Markdown por trás dele (Ctrl+Shift+M).
-    let mut view = ed.source.is_some() as usize;
-    let (formatted, markdown) = (tr!("page.view_formatted"), tr!("page.view_markdown"));
-    if segmented(&mut tu, &[&formatted, &markdown], &mut view, 24.0, false) || ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::M)) {
-        ed.toggle_source();
-    }
-    tu.add_space(6.0);
-    let (status, col) = if ed.dirty { (tr!("page.editing"), p.hard) } else { (tr!("page.saved"), p.good) };
-    let status = status.as_str();
-    let (sr, _) = tu.allocate_exact_size(vec2(text_width(tu.painter(), status, serif(12.0, W::Regular)) + 14.0, 20.0), Sense::hover());
-    tu.painter().circle_filled(pos2(sr.left() + 3.0, sr.center().y), 3.0, col);
-    text(tu.painter(), pos2(sr.left() + 12.0, sr.center().y), Align2::LEFT_CENTER, status, serif(12.0, W::Regular), p.muted, 80.0);
-
-    // ── Barra de formatação ──
-    let bar = Rect::from_min_size(pos2(rect.left(), top.bottom()), vec2(rect.width(), 46.0));
+    // ── Barra única: formatação à esquerda; status, Formatado/Markdown e ⋯ à direita ──
+    let bar = Rect::from_min_size(rect.min, vec2(rect.width(), 48.0));
     ui.painter().rect_filled(bar, 0, p.card);
     ui.painter().hline(bar.x_range(), bar.bottom() - 0.5, Stroke::new(1.0, p.line));
     let mut actions: Vec<Action> = Vec::new();
+    let right_w = page_controls(app, &mut ed, ui, bar, &mut actions);
+    let left = Rect::from_min_max(bar.min, pos2(bar.right() - right_w - 12.0, bar.bottom()));
     if ed.source.is_some() {
-        text(ui.painter(), pos2(bar.left() + 20.0, bar.center().y), Align2::LEFT_CENTER, &keys(&tr!("page.markdown_hint")), serif(12.5, W::Italic), p.muted, bar.width() - 40.0);
+        text(ui.painter(), pos2(left.left() + 20.0, left.center().y), Align2::LEFT_CENTER, &keys(&tr!("page.markdown_hint")), serif(12.5, W::Italic), p.muted, left.width() - 40.0);
     } else {
-        toolbar(app, &mut ed, ui, bar, &mut actions);
+        toolbar(&mut ed, ui, left, &mut actions);
     }
     actions.append(&mut ed.queued);
+
+    // Ctrl+Z / Ctrl+Y (ou Ctrl+Shift+Z) valem para a página toda: as teclas
+    // são tomadas antes dos campos de texto, que só desfariam o próprio bloco.
+    if ed.source.is_none() {
+        let ctx = ui.ctx().clone();
+        let redo = ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) || i.consume_key(Modifiers::COMMAND, Key::Y));
+        let undo = ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Z));
+        if redo {
+            ed.redo();
+        } else if undo {
+            ed.undo();
+        }
+    }
 
     // ── Conteúdo ──
     let body = Rect::from_min_max(pos2(rect.left(), bar.bottom()), rect.max);
@@ -593,7 +656,10 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
                 ui.painter().hline(r0.left()..=r0.left() + col_w, y, Stroke::new(2.0, p.accent));
             }
             if ui.ctx().input(|i| i.pointer.any_released()) {
-                if let Some(from) = ed.idx(drag_id) {
+                // Arrastando um dos blocos escolhidos, todos vão juntos.
+                if ed.picked.len() > 1 && ed.picked.contains(&drag_id) {
+                    actions.push(Action::MoveMany(ed.picked_in_order(), target));
+                } else if let Some(from) = ed.idx(drag_id) {
                     actions.push(Action::Move(from, target));
                 }
                 ed.drag = None;
@@ -639,12 +705,17 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
     if !ed.picked.is_empty() && ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
         ed.picked.clear();
     }
+    // Delete/Backspace com blocos escolhidos e nenhum texto em edição: apaga todos.
+    if !ed.picked.is_empty() && !ui.ctx().egui_wants_keyboard_input() && ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Delete) || i.consume_key(Modifiers::NONE, Key::Backspace)) {
+        actions.push(Action::DeleteMany(ed.picked_in_order()));
+    }
     // Ctrl+Shift+G: cartões com IA da seleção ou da página.
     if ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::G)) {
         actions.push(Action::AiCards(None));
     }
 
     let nav = apply_actions(app, &mut ed, actions, sid);
+    ed.record_history();
     // O foco no bloco novo só vale no quadro seguinte: pede esse quadro já,
     // antes que a próxima tecla chegue e caia no bloco antigo.
     if ed.pending.is_some() || ed.focus_title {
@@ -771,19 +842,102 @@ fn page_head(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, w: f32) {
     }
 }
 
-fn toolbar(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: &mut Vec<Action>) {
+/// Grupo da direita da barra: status (bolinha), Formatado/Markdown e o menu ⋯
+/// (Foco, Histórico, Exportar e, sem a lateral, os botões de cartão). Devolve
+/// a largura usada.
+fn page_controls(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: &mut Vec<Action>) -> f32 {
     let p = pal();
+    let area = bar.shrink2(vec2(14.0, 0.0));
+    let mut ru = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::right_to_left(egui::Align::Center)));
+    ru.spacing_mut().item_spacing.x = 6.0;
+    let at = ed.focus.and_then(|id| ed.idx(id)).unwrap_or(ed.blocks.len().saturating_sub(1));
+    // Sem a lateral, "Criar flashcard" fica à vista se houver espaço; o resto vai para o ⋯.
+    let card_button = !ed.aside_shown && bar.width() >= 1000.0;
+    let more = icon_button(&mut ru, "⋯", &tr!("page.page_options"), 30.0);
+    egui::Popup::menu(&more).frame(popup_frame()).width(240.0).show(|ui| {
+        if menu_item(ui, &tr!(if ed.focus_mode { "page.exit_focus" } else { "page.focus" }), ed.focus_mode).clicked() {
+            ed.focus_mode = !ed.focus_mode;
+        }
+        if menu_item(ui, &tr!("page.history"), false).clicked() {
+            ed.flush(&app.db);
+            ed.snapshot(&app.db);
+            app.modal = Some(super::modals::Modal::Versions(ed.meta.id));
+        }
+        if menu_item(ui, &tr!("page.export"), false).clicked() {
+            ed.flush(&app.db);
+            export_markdown(app, ed);
+        }
+        if !ed.aside_shown {
+            menu_sep(ui);
+            if !card_button && menu_item_ex(ui, &tr!("page.create_flashcard"), None, false, Some(&keys("Ctrl ⇧ F"))).clicked() {
+                actions.push(Action::Flashcard(at));
+            }
+            if menu_item_ex(ui, &tr!("ai.button"), None, false, Some(&keys("Ctrl ⇧ G"))).on_hover_text(keys(&tr!("ai.button_tip"))).clicked() {
+                actions.push(Action::AiCards(None));
+            }
+        }
+    });
+    // Texto formatado ou o Markdown por trás dele (Ctrl+Shift+M).
+    if view_toggle(&mut ru, ed.source.is_some()) || ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::M)) {
+        ed.toggle_source();
+    }
+    let (status, col) = if ed.dirty { (tr!("page.editing"), p.hard) } else { (tr!("page.saved"), p.good) };
+    let (sr, sresp) = ru.allocate_exact_size(vec2(16.0, 24.0), Sense::hover());
+    ru.painter().circle_filled(sr.center(), 3.5, col);
+    a11y(&sresp, egui::accesskit::Role::Label, &status, None);
+    sresp.on_hover_text(status);
+    if card_button {
+        ru.add_space(4.0);
+        if button_kbd(&mut ru, &tr!("page.create_flashcard"), if bar.width() >= 1180.0 { Some("Ctrl ⇧ F") } else { None }, Btn::Primary, 30.0).clicked() {
+            actions.push(Action::Flashcard(at));
+        }
+    }
+    area.right() - ru.min_rect().left()
+}
+
+/// Formatado / Markdown em dois botões pequenos ("Aa" e "M↓"). Devolve se trocou.
+fn view_toggle(ui: &mut Ui, source: bool) -> bool {
+    let p = pal();
+    let (r, _) = ui.allocate_exact_size(vec2(64.0, 28.0), Sense::hover());
+    ui.painter().rect(r, CornerRadius::same(8), p.input, Stroke::new(1.0, p.border_control), StrokeKind::Inside);
+    let mut changed = false;
+    // A ordem na tela é Aa | M↓; o layout aqui é da direita para a esquerda, mas o retângulo é um só.
+    for (k, (glyph, key)) in [("Aa", "page.view_formatted"), ("M↓", "page.view_markdown")].into_iter().enumerate() {
+        let on = (k == 1) == source;
+        let cell = Rect::from_min_size(pos2(r.left() + 2.0 + k as f32 * 30.0, r.top() + 2.0), vec2(30.0, 24.0));
+        let resp = ui.interact(cell, ui.scope_id().with(("view", k)), Sense::click());
+        if on {
+            ui.painter().rect_filled(cell, CornerRadius::same(6), p.selected);
+        } else if resp.hovered() {
+            ui.painter().rect_filled(cell, CornerRadius::same(6), p.hover);
+        }
+        ui.painter().text(cell.center(), Align2::CENTER_CENTER, glyph, if k == 0 { serif(13.0, W::Semi) } else { mono(12.0) }, if on { p.text } else { p.muted });
+        let label = format!("{} (Ctrl Shift M)", tr!(key));
+        a11y(&resp, egui::accesskit::Role::RadioButton, &tr!(key), Some(on));
+        if resp.on_hover_text(keys(&label)).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() && !on {
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Barra de formatação. Em larguras menores, os grupos menos usados saem da
+/// barra e entram no menu "Mais": primeiro Imagem/Tabela/Fórmula, depois as
+/// listas e citação, depois código e link.
+fn toolbar(ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: &mut Vec<Action>) {
+    let w = bar.width() - 28.0;
+    // Larguras medidas: ~470 px com código e link, +140 com as listas, +260 com os botões de inserir.
+    let show_insert = w >= 870.0;
+    let show_lists = w >= 612.0;
+    let show_code = w >= 470.0;
+    let kind_w = if show_insert { 168.0 } else { 132.0 };
     let mut tu = ui.new_child(egui::UiBuilder::new().max_rect(bar.shrink2(vec2(14.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
     tu.set_clip_rect(bar);
     tu.spacing_mut().item_spacing.x = 2.0;
-    // Em larguras menores, Imagem/Tabela/Fórmula vão para o menu "Mais".
-    let compact = bar.width() < 900.0;
-    // O botão da IA só cabe na barra larga; nas outras, fica no menu Inserir/Mais.
-    let ai_button = bar.width() >= 1180.0 && !ed.aside_shown;
     let fidx = ed.focus.and_then(|id| ed.idx(id));
     let cur_kind = fidx.map(|i| ed.blocks[i].kind).unwrap_or(BlockKind::Paragraph);
     let label_kind = if cur_kind.is_text() { cur_kind.label() } else { BlockKind::Paragraph.label() };
-    let kr = button_sized(&mut tu, &format!("{label_kind}  ▾"), None, Btn::Ghost, vec2(if compact { 132.0 } else { 168.0 }, 30.0), true);
+    let kr = button_sized(&mut tu, &format!("{label_kind}  ▾"), None, Btn::Ghost, vec2(kind_w, 30.0), true);
     egui::Popup::menu(&kr).frame(popup_frame()).width(220.0).show(|ui| {
         for k in [BlockKind::Paragraph, BlockKind::H1, BlockKind::H2, BlockKind::H3, BlockKind::Bullet, BlockKind::Numbered, BlockKind::Check, BlockKind::Quote, BlockKind::Callout, BlockKind::Code, BlockKind::Formula] {
             if menu_item(ui, &k.label(), k == cur_kind).clicked() {
@@ -794,8 +948,9 @@ fn toolbar(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: 
         }
     });
     sep(&mut tu);
-    for (g, m, key) in [("B", "**", "page.bold"), ("I", "*", "page.italic"), ("U", "__", "page.underline"), ("S", "~~", "page.strike"), ("</>", "`", "page.inline_code"), ("▮", "==", "page.highlight"), ("[[ ]]", "[[", "page.link")] {
-        if tool_btn(&mut tu, g, &tr!(key)).clicked() {
+    let marks: &[(&str, &str, &str)] = &[("B", "**", "page.bold"), ("I", "*", "page.italic"), ("U", "__", "page.underline"), ("S", "~~", "page.strike"), ("</>", "`", "page.inline_code"), ("[[ ]]", "[[", "page.link")];
+    for (g, m, key) in marks.iter().take(if show_code { 6 } else { 4 }) {
+        if tool_btn(&mut tu, g, &tr!(*key)).clicked() {
             wrap_focused(ed, m);
         }
     }
@@ -803,58 +958,56 @@ fn toolbar(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: 
     if let Some((bg, ink)) = color_menu(&cr) {
         color_focused(ed, bg, ink);
     }
-    sep(&mut tu);
-    for (g, k) in [("•≡", BlockKind::Bullet), ("1≡", BlockKind::Numbered), ("☑", BlockKind::Check), ("“", BlockKind::Quote)] {
-        let on = cur_kind == k && fidx.is_some();
-        let r = tool_btn_on(&mut tu, g, &k.label(), on);
-        if r.clicked() {
-            if let Some(i) = fidx {
-                actions.push(Action::Convert(i, if on { BlockKind::Paragraph } else { k }));
+    let lists = [("•≡", BlockKind::Bullet), ("1≡", BlockKind::Numbered), ("☑", BlockKind::Check), ("“", BlockKind::Quote)];
+    if show_lists {
+        sep(&mut tu);
+        for (g, k) in lists {
+            let on = cur_kind == k && fidx.is_some();
+            if tool_btn_on(&mut tu, g, &k.label(), on).clicked() {
+                if let Some(i) = fidx {
+                    actions.push(Action::Convert(i, if on { BlockKind::Paragraph } else { k }));
+                }
             }
         }
     }
     sep(&mut tu);
     let at = fidx.unwrap_or(ed.blocks.len().saturating_sub(1));
-    if !compact {
-        if button(&mut tu, &tr!("page.image"), Btn::Ghost, 30.0).clicked() {
-            actions.push(Action::InsertAfter(at, BlockKind::Image));
-        }
-        if button(&mut tu, &tr!("page.table"), Btn::Ghost, 30.0).clicked() {
-            actions.push(Action::InsertAfter(at, BlockKind::Table));
-        }
-        if button(&mut tu, &tr!("page.formula"), Btn::Ghost, 30.0).clicked() {
-            actions.push(Action::InsertAfter(at, BlockKind::Formula));
+    if show_insert {
+        for (key, k) in [("page.image", BlockKind::Image), ("page.table", BlockKind::Table), ("page.formula", BlockKind::Formula)] {
+            if button(&mut tu, &tr!(key), Btn::Ghost, 30.0).clicked() {
+                actions.push(Action::InsertAfter(at, k));
+            }
         }
     }
-    let more = button_kbd(&mut tu, &tr!(if compact { "page.insert" } else { "page.more" }), Some("/"), Btn::Ghost, 30.0);
-    let extra: &[BlockKind] = if compact { &[BlockKind::Image, BlockKind::Table, BlockKind::Formula] } else { &[] };
-    egui::Popup::menu(&more).frame(popup_frame()).width(220.0).show(|ui| {
+    let more = button_kbd(&mut tu, &tr!("page.more"), Some("/"), Btn::Ghost, 30.0);
+    egui::Popup::menu(&more).frame(popup_frame()).width(230.0).show(|ui| {
+        if !show_code {
+            for (_, m, key) in &marks[4..] {
+                if menu_item(ui, &tr!(*key), false).clicked() {
+                    wrap_focused(ed, m);
+                }
+            }
+            menu_sep(ui);
+        }
+        if !show_lists {
+            for (_, k) in lists {
+                let on = cur_kind == k && fidx.is_some();
+                if menu_item(ui, &k.label(), on).clicked() {
+                    if let Some(i) = fidx {
+                        actions.push(Action::Convert(i, if on { BlockKind::Paragraph } else { k }));
+                    }
+                }
+            }
+            menu_sep(ui);
+        }
+        caps_label(ui, &tr!("page.insert"));
+        let extra: &[BlockKind] = if show_insert { &[] } else { &[BlockKind::Image, BlockKind::Table, BlockKind::Formula] };
         for k in extra.iter().copied().chain([BlockKind::Callout, BlockKind::Code, BlockKind::Divider, BlockKind::H1, BlockKind::H2, BlockKind::H3]) {
             if menu_item(ui, &k.label(), false).clicked() {
                 actions.push(Action::InsertAfter(at, k));
             }
         }
-        if !ai_button && !ed.aside_shown {
-            menu_sep(ui);
-            if menu_item_ex(ui, &tr!("ai.button"), None, false, Some(&keys("Ctrl ⇧ G"))).clicked() {
-                actions.push(Action::AiCards(None));
-            }
-        }
     });
-    if ed.aside_shown {
-        let _ = (app, p);
-        return;
-    }
-    tu.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
-        if button_kbd(ui, &tr!("page.create_flashcard"), if compact { None } else { Some("Ctrl ⇧ F") }, Btn::Primary, 30.0).clicked() {
-            actions.push(Action::Flashcard(at));
-        }
-        if ai_button && button(ui, &tr!("ai.button"), Btn::Secondary, 30.0).on_hover_text(keys(&tr!("ai.button_tip"))).clicked() {
-            actions.push(Action::AiCards(None));
-        }
-    });
-    let _ = (app, p);
 }
 
 fn sep(ui: &mut Ui) {
@@ -882,8 +1035,7 @@ fn tool_btn_on(ui: &mut Ui, glyph: &str, label: &str, on: bool) -> egui::Respons
         "</>" | "[[ ]]" => mono(11.0),
         _ => serif(14.0, W::Regular),
     };
-    let color = if glyph == "▮" { p.hard } else { p.text2 };
-    let tr = text(ui.painter(), r.center(), Align2::CENTER_CENTER, glyph, font, color, w);
+    let tr = text(ui.painter(), r.center(), Align2::CENTER_CENTER, glyph, font, p.text2, w);
     match glyph {
         "U" => {
             ui.painter().hline(tr.x_range(), tr.bottom() - 1.0, Stroke::new(1.0, p.text2));
@@ -1255,8 +1407,9 @@ fn handle_keys(ed: &mut PageEditor, ctx: &egui::Context, i: usize, eid: Id, acti
             wrap_focused(ed, m);
         }
     }
+    // Ctrl+Shift+H: realce amarelo, o mesmo do botão de cores.
     if !matches!(kind, BlockKind::Code | BlockKind::Formula) && key(Modifiers::COMMAND | Modifiers::SHIFT, Key::H) {
-        wrap_focused(ed, "==");
+        color_focused(ed, true, Some(rich::Ink::Yellow));
     }
     let b = &ed.blocks[i];
     if kind != BlockKind::Code && kind != BlockKind::Formula && key(Modifiers::NONE, Key::Enter) {
@@ -1457,8 +1610,10 @@ fn gutter(ed: &mut PageEditor, ui: &mut Ui, i: usize, rect: Rect, actions: &mut 
             actions.push(Action::Move(i, i + 2));
         }
         menu_sep(ui);
-        if menu_item(ui, &tr!("page.delete_block"), false).clicked() {
-            actions.push(Action::Delete(i));
+        // Com vários escolhidos (este entre eles), apaga todos.
+        let label = if many { tr_n!("page.delete_n_blocks", ed.picked.len()) } else { tr!("page.delete_block") };
+        if menu_item_ex(ui, &label, None, false, if many { Some("Del") } else { None }).clicked() {
+            actions.push(if many { Action::DeleteMany(ed.picked_in_order()) } else { Action::Delete(i) });
         }
     });
 }
@@ -1792,6 +1947,25 @@ fn apply_actions(app: &mut App, ed: &mut PageEditor, actions: Vec<Action>, sid: 
                     ed.touch();
                 }
             }
+            Action::DeleteMany(ids) => {
+                // O cursor vai para o bloco antes do primeiro apagado.
+                let first = ed.blocks.iter().position(|b| ids.contains(&b.id));
+                ed.blocks.retain(|b| !ids.contains(&b.id));
+                if ed.blocks.is_empty() {
+                    ed.blocks.push(Block::new(BlockKind::Paragraph, ""));
+                }
+                ed.picked.clear();
+                ed.pick_anchor = None;
+                ed.focus = None;
+                if let Some(f) = first {
+                    let b = &ed.blocks[f.saturating_sub(1).min(ed.blocks.len() - 1)];
+                    if b.kind.is_text() {
+                        let (id, n) = (b.id, b.text.chars().count());
+                        ed.focus_block(id, n, n);
+                    }
+                }
+                ed.touch();
+            }
             Action::Duplicate(i) => {
                 let mut b = ed.blocks[i].clone();
                 b.id = crate::db::new_id();
@@ -1803,6 +1977,17 @@ fn apply_actions(app: &mut App, ed: &mut PageEditor, actions: Vec<Action>, sid: 
                     let b = ed.blocks.remove(from);
                     let to = if to > from { to - 1 } else { to }.min(ed.blocks.len());
                     ed.blocks.insert(to, b);
+                    ed.touch();
+                }
+            }
+            Action::MoveMany(ids, to) => {
+                // Quantos dos escolhidos estão antes do destino: o índice anda para trás.
+                let before = ed.blocks.iter().take(to).filter(|b| ids.contains(&b.id)).count();
+                let moving: Vec<Block> = ed.blocks.iter().filter(|b| ids.contains(&b.id)).cloned().collect();
+                if !moving.is_empty() {
+                    ed.blocks.retain(|b| !ids.contains(&b.id));
+                    let at = (to - before).min(ed.blocks.len());
+                    ed.blocks.splice(at..at, moving);
                     ed.touch();
                 }
             }

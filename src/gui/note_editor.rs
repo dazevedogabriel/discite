@@ -375,7 +375,10 @@ fn field_box(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui, i: usize, w: f32) 
             }
         }
         if ctx.input_mut(|inp| inp.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::H)) {
-            wrap_sel(ed, i, "==");
+            let (a, b) = selection_bytes(ed, i);
+            let (s, na, nb) = rich::set_color(&ed.note.fields[i], a, b, true, Some(rich::Ink::Yellow));
+            ed.pending_cursor = Some((i, rich::char_of_byte(&s, na), rich::char_of_byte(&s, nb)));
+            ed.note.fields[i] = s;
         }
         if cloze && ctx.input_mut(|inp| inp.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::C)) {
             new_cloze(ed);

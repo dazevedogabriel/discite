@@ -561,7 +561,7 @@ fn rich_box(app: &mut App, ed: &mut Editor, ui: &mut Ui, f: Field, w: f32, rows:
             }
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::H)) {
-            ed.apply(f, |t, a, b| rich::toggle_wrap(t, a, b, "=="));
+            ed.apply(f, |t, a, b| rich::set_color(t, a, b, true, Some(rich::Ink::Yellow)));
         }
     }
     let stroke = if focused { Stroke::new(1.0, p.accent) } else { Stroke::new(1.0, p.border_control) };
