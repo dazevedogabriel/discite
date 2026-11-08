@@ -16,132 +16,140 @@ pub fn ui(app: &mut App, ui: &mut Ui) {
     let area = ui.available_rect_before_wrap();
     let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(area.shrink2(vec2(28.0, 20.0))).layout(egui::Layout::top_down(egui::Align::Min)));
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(&mut cu, |ui| {
-        // Até 760 px, mas nunca mais que a janela (janela estreita).
-        ui.set_max_width(ui.available_width().min(760.0));
-        ui.spacing_mut().item_spacing.y = 16.0;
-        section(ui, &tr!("settings.appearance"), |ui| {
-            row(ui, &tr!("app.language"), |ui| {
-                let cur = current_language_name(app);
-                let lresp = select_field(ui, "settings_lang", &cur, None, 220.0, 32.0, |ui| language_menu(app, ui));
-                lresp.on_hover_text(tr!("settings.language_hint"));
-            });
-            row(ui, &tr!("settings.theme"), |ui| {
-                let mut sel = if app.cfg.dark { 0 } else { 1 };
-                let (dark, light) = (tr!("settings.theme_dark"), tr!("settings.theme_light"));
-                if segmented(ui, &[dark.as_str(), light.as_str()], &mut sel, 28.0, false) {
-                    app.cfg.dark = sel == 0;
-                    app.save_settings();
-                    apply(ui.ctx(), app.cfg.dark);
-                }
-            });
-            row(ui, &tr!("settings.reading_width"), |ui| {
-                if ui.add(egui::Slider::new(&mut app.cfg.reading_width, 520.0..=900.0).suffix(" px").step_by(20.0)).changed() {
-                    app.save_settings();
-                }
-            });
-            row(ui, &tr!("settings.sidebar_collapsed"), |ui| {
-                if toggle(ui, &mut app.cfg.sidebar_collapsed, &tr!("settings.sidebar_collapsed")).clicked() {
-                    app.save_settings();
-                }
-            });
-        });
-        section(ui, &tr!("settings.study"), |ui| {
-            row(ui, &tr!("settings.rollover"), |ui| {
-                let mut h = app.cfg.rollover_hour;
-                if ui.add(egui::DragValue::new(&mut h).range(0..=12).suffix(":00")).changed() {
-                    app.cfg.rollover_hour = h;
-                    app.save_settings();
-                    app.changed();
-                }
-            });
-            row(ui, &tr!("settings.answer_cap"), |ui| {
-                let mut s = app.cfg.answer_cap_secs;
-                if ui.add(egui::DragValue::new(&mut s).range(10..=600).suffix(" s")).changed() {
-                    app.cfg.answer_cap_secs = s;
-                    app.save_settings();
-                }
-            });
-            row(ui, &tr!("settings.presets"), |ui| {
-                if button(ui, &tr!("settings.open_presets"), Btn::Secondary, 32.0).clicked() {
-                    let id = app.presets.first().map(|p| p.id).unwrap_or(1);
-                    app.go(super::Screen::Preset(id));
-                }
-            });
-        });
-        super::ai::settings_section(app, ui);
-        section(ui, &tr!("settings.data"), |ui| {
-            row(ui, &tr!("settings.auto_backup"), |ui| {
-                if toggle(ui, &mut app.cfg.auto_backup, &tr!("settings.auto_backup_short")).clicked() {
-                    app.save_settings();
-                }
-            });
-            row(ui, &tr!("settings.last_backup", when = if app.cfg.last_backup > 0 { ago(app.cfg.last_backup) } else { tr!("settings.never") }), |ui| {
-                if button(ui, &tr!("settings.backup_now"), Btn::Secondary, 32.0).clicked() {
-                    app.maybe_backup(true);
-                    app.toast(tr!("toast.backup_done"));
-                }
-            });
-            row(ui, &tr!("settings.restore"), |ui| {
-                if button(ui, &tr!("settings.restore_button"), Btn::Secondary, 32.0).clicked() {
-                    let dir = app.db.root.join("backups");
-                    if let Some(path) = rfd::FileDialog::new().set_directory(&dir).add_filter(tr!("settings.db_filter"), &["db"]).pick_file() {
-                        match std::fs::write(app.db.root.join("restore.pending"), path.to_string_lossy().as_bytes()) {
-                            Ok(()) => app.toast(tr!("toast.restore_pending")),
-                            Err(e) => app.error(e),
+        // Coluna de até 760 px, centralizada; nunca mais larga que a janela.
+        let w = ui.available_width().min(760.0);
+        let pad = (ui.available_width() - w) / 2.0;
+        ui.horizontal_top(|ui| {
+            ui.add_space(pad);
+            ui.vertical(|ui| {
+                ui.set_max_width(w);
+                ui.spacing_mut().item_spacing.y = 16.0;
+                section(ui, &tr!("settings.appearance"), |ui| {
+                    row(ui, &tr!("app.language"), |ui| {
+                        let cur = current_language_name(app);
+                        let lresp = select_field(ui, "settings_lang", &cur, None, 220.0, 32.0, |ui| language_menu(app, ui));
+                        lresp.on_hover_text(tr!("settings.language_hint"));
+                    });
+                    row(ui, &tr!("settings.theme"), |ui| {
+                        let mut sel = if app.cfg.dark { 0 } else { 1 };
+                        let (dark, light) = (tr!("settings.theme_dark"), tr!("settings.theme_light"));
+                        if segmented(ui, &[dark.as_str(), light.as_str()], &mut sel, 28.0, false) {
+                            app.cfg.dark = sel == 0;
+                            app.save_settings();
+                            apply(ui.ctx(), app.cfg.dark);
                         }
-                    }
-                }
-            });
-            row(ui, &tr!("settings.data_folder"), |ui| {
-                if button(ui, &tr!("settings.open_folder"), Btn::Secondary, 32.0).clicked() {
-                    open_folder(&app.db.root);
-                }
-            });
-            row(ui, &tr!("log.row"), |ui| {
-                if button(ui, &tr!("log.open"), Btn::Secondary, 32.0).on_hover_text(tr!("log.hint")).clicked() {
-                    super::logview::open(app);
-                }
-            });
-            row(ui, &tr!("settings.orphans"), |ui| {
-                if button(ui, &tr!("settings.clean_orphans"), Btn::Secondary, 32.0).clicked() {
-                    match app.db.orphan_media() {
-                        Ok(list) => {
-                            for f in &list {
-                                let _ = std::fs::remove_file(app.db.media_dir().join(f));
+                    });
+                    row(ui, &tr!("settings.reading_width"), |ui| {
+                        if ui.add(egui::Slider::new(&mut app.cfg.reading_width, 520.0..=900.0).suffix(" px").step_by(20.0)).changed() {
+                            app.save_settings();
+                        }
+                    });
+                    row(ui, &tr!("settings.sidebar_collapsed"), |ui| {
+                        if toggle(ui, &mut app.cfg.sidebar_collapsed, &tr!("settings.sidebar_collapsed")).clicked() {
+                            app.save_settings();
+                        }
+                    });
+                });
+                section(ui, &tr!("settings.study"), |ui| {
+                    row(ui, &tr!("settings.rollover"), |ui| {
+                        let mut h = app.cfg.rollover_hour;
+                        if ui.add(egui::DragValue::new(&mut h).range(0..=12).suffix(":00")).changed() {
+                            app.cfg.rollover_hour = h;
+                            app.save_settings();
+                            app.changed();
+                        }
+                    });
+                    row(ui, &tr!("settings.answer_cap"), |ui| {
+                        let mut s = app.cfg.answer_cap_secs;
+                        if ui.add(egui::DragValue::new(&mut s).range(10..=600).suffix(" s")).changed() {
+                            app.cfg.answer_cap_secs = s;
+                            app.save_settings();
+                        }
+                    });
+                    row(ui, &tr!("settings.presets"), |ui| {
+                        if button(ui, &tr!("settings.open_presets"), Btn::Secondary, 32.0).clicked() {
+                            let id = app.presets.first().map(|p| p.id).unwrap_or(1);
+                            app.go(super::Screen::Preset(id));
+                        }
+                    });
+                });
+                super::ai::settings_section(app, ui);
+                super::ai::advanced_section(app, ui);
+                section(ui, &tr!("settings.data"), |ui| {
+                    row(ui, &tr!("settings.auto_backup"), |ui| {
+                        if toggle(ui, &mut app.cfg.auto_backup, &tr!("settings.auto_backup_short")).clicked() {
+                            app.save_settings();
+                        }
+                    });
+                    row(ui, &tr!("settings.last_backup", when = if app.cfg.last_backup > 0 { ago(app.cfg.last_backup) } else { tr!("settings.never") }), |ui| {
+                        if button(ui, &tr!("settings.backup_now"), Btn::Secondary, 32.0).clicked() {
+                            app.maybe_backup(true);
+                            app.toast(tr!("toast.backup_done"));
+                        }
+                    });
+                    row(ui, &tr!("settings.restore"), |ui| {
+                        if button(ui, &tr!("settings.restore_button"), Btn::Secondary, 32.0).clicked() {
+                            let dir = app.db.root.join("backups");
+                            if let Some(path) = rfd::FileDialog::new().set_directory(&dir).add_filter(tr!("settings.db_filter"), &["db"]).pick_file() {
+                                match std::fs::write(app.db.root.join("restore.pending"), path.to_string_lossy().as_bytes()) {
+                                    Ok(()) => app.toast(tr!("toast.restore_pending")),
+                                    Err(e) => app.error(e),
+                                }
                             }
-                            app.toast(tr_n!("toast.files_removed", list.len()));
                         }
-                        Err(e) => app.error(e),
-                    }
-                }
-            });
-            row(ui, &tr!("settings.integrity"), |ui| {
-                if button(ui, &tr!("settings.check"), Btn::Secondary, 32.0).clicked() {
-                    let r: String = app.db.conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap_or_else(|e| e.to_string());
-                    if r == "ok" {
-                        app.toast(tr!("toast.db_ok"));
-                    } else {
-                        app.error(tr!("toast.db_problem", detail = r));
-                    }
-                }
-            });
-            if app.subjects.is_empty() {
-                row(ui, &tr!("settings.sample"), |ui| {
-                    if button(ui, &tr!("dash.load_sample"), Btn::Secondary, 32.0).clicked() {
-                        match seed_demo(&app.db) {
-                            Ok(()) => {
-                                app.reload();
-                                app.toast(tr!("toast.sample_short"));
+                    });
+                    row(ui, &tr!("settings.data_folder"), |ui| {
+                        if button(ui, &tr!("settings.open_folder"), Btn::Secondary, 32.0).clicked() {
+                            open_folder(&app.db.root);
+                        }
+                    });
+                    row(ui, &tr!("log.row"), |ui| {
+                        if button(ui, &tr!("log.open"), Btn::Secondary, 32.0).on_hover_text(tr!("log.hint")).clicked() {
+                            super::logview::open(app);
+                        }
+                    });
+                    row(ui, &tr!("settings.orphans"), |ui| {
+                        if button(ui, &tr!("settings.clean_orphans"), Btn::Secondary, 32.0).clicked() {
+                            match app.db.orphan_media() {
+                                Ok(list) => {
+                                    for f in &list {
+                                        let _ = std::fs::remove_file(app.db.media_dir().join(f));
+                                    }
+                                    app.toast(tr_n!("toast.files_removed", list.len()));
+                                }
+                                Err(e) => app.error(e),
                             }
-                            Err(e) => app.error(e),
                         }
+                    });
+                    row(ui, &tr!("settings.integrity"), |ui| {
+                        if button(ui, &tr!("settings.check"), Btn::Secondary, 32.0).clicked() {
+                            let r: String = app.db.conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap_or_else(|e| e.to_string());
+                            if r == "ok" {
+                                app.toast(tr!("toast.db_ok"));
+                            } else {
+                                app.error(tr!("toast.db_problem", detail = r));
+                            }
+                        }
+                    });
+                    if app.subjects.is_empty() {
+                        row(ui, &tr!("settings.sample"), |ui| {
+                            if button(ui, &tr!("dash.load_sample"), Btn::Secondary, 32.0).clicked() {
+                                match seed_demo(&app.db) {
+                                    Ok(()) => {
+                                        app.reload();
+                                        app.toast(tr!("toast.sample_short"));
+                                    }
+                                    Err(e) => app.error(e),
+                                }
+                            }
+                        });
                     }
                 });
-            }
-        });
-        section(ui, &tr!("settings.about"), |ui| {
-            para(ui, &tr!("settings.about_text"), serif(13.0, W::Regular), p.text2);
-            para(ui, &tr!("settings.fonts"), serif(12.0, W::Italic), p.muted);
+                section(ui, &tr!("settings.about"), |ui| {
+                    para(ui, &tr!("settings.about_text"), serif(13.0, W::Regular), p.text2);
+                    para(ui, &tr!("settings.fonts"), serif(12.0, W::Italic), p.muted);
+                });
+            });
         });
     });
 }

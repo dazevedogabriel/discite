@@ -199,6 +199,10 @@ download from Hugging Face.
   Each one can be edited, unchecked or discarded, and nothing becomes a card
   until you press *Add*. Choose how many (5, 10, 15), the kind (question and
   answer, cloze, or mixed), the deck and the tags.
+- **Your parameters.** Pick the difficulty (easy: main ideas and definitions;
+  hard: details, exceptions, numbers and comparisons, with close wrong options)
+  and type instructions such as "focus on doses and contraindications". Both
+  apply to cards and questions; the AI still only uses what your notes say.
 - **Questions too.** The **Cards / Questions** switch at the top makes
   multiple-choice questions instead: stem, four options (click a letter to
   change the right one) and an explanation, added to the bank you choose. The
@@ -261,6 +265,29 @@ quantized to Q4_K_M by [Unsloth](https://huggingface.co/unsloth).
 <p align="center">
   <img src="docs/images/ai-settings.png" alt="Settings → Local AI: the three models with download, use and delete buttons, the GPU switch and the detected graphics card" width="760">
 </p>
+
+### Advanced AI
+
+**Settings → Advanced AI** lets you go beyond the list:
+
+- **Your own model.** Any `.gguf` file: drop it in the models folder, pick it
+  from anywhere on disk, or paste a download link (a Hugging Face "blob" link
+  works too). Models outside the list use the chat format stored in the file
+  itself, so Llama, Gemma, Mistral and others work. A larger model (Qwen3 14B
+  fits a 12 GB graphics card) writes better cards.
+- **Online AI.** Any service that speaks the OpenAI API format. The free ones
+  come first and are marked: Google Gemini, Groq, OpenRouter (its `:free`
+  models), Cerebras and Mistral; OpenAI is listed as paid; *Custom* points at
+  Ollama, LM Studio or any other server. Paste the key, press *List models*,
+  pick one and press *Use the online AI*. Free plan limits change over time.
+  Models that think before answering (Gemini 2.5, the "reasoning" ones) work,
+  but take longer: Discite doesn't cap their answer, so the thinking can't use
+  up the room meant for the cards.
+- **Same rules everywhere.** The same instructions go to every model (only
+  facts from your notes), and every answer goes through the same check: the
+  quote must exist in the notes and the answer can only use their words.
+  Without the local grammar, the online AI gets the JSON format in writing and
+  is capped at the number of cards you asked for.
 
 ### Speed
 

@@ -1,13 +1,16 @@
-//! IA local na interface: a janela "Gerar com IA" (cartões ou questões
-//! objetivas que chegam um a um, editáveis, e só são criados quando o usuário
-//! adiciona), o download do modelo e a seção nas Configurações.
+//! IA na interface: a janela "Gerar com IA" (cartões ou questões objetivas
+//! que chegam um a um, editáveis, e só são criados quando o usuário adiciona),
+//! o download do modelo e as seções "IA local" e "IA avançada" (um .gguf
+//! qualquer ou uma IA online por API) nas Configurações.
 
 use super::theme::*;
 use super::widgets::*;
 use super::App;
 use crate::ai::engine::{self, Event, GenRequest, Job};
 use crate::ai::models::{self, ModelSpec, Phase};
-use crate::ai::prompt::{self, QSuggestion, Style, Suggestion};
+use crate::ai::online::{self, Api};
+use std::path::PathBuf;
+use crate::ai::prompt::{self, Level, QSuggestion, Style, Suggestion};
 use crate::cards::{self, NoteKind};
 use crate::db::Note;
 use crate::{tr, tr_n};
@@ -22,6 +25,47 @@ pub struct AiState {
     /// Nome da GPU (procurado uma vez, numa thread, para não travar a tela).
     gpu: Option<Option<String>>,
     gpu_probe: Option<Receiver<Option<String>>>,
+    /// Últimas instruções digitadas (valem até fechar o app).
+    guide: String,
+    /// IA avançada: link de download digitado e a busca de modelos do serviço online.
+    link: String,
+    models_probe: Option<Receiver<anyhow::Result<Vec<String>>>>,
+    online_models: Vec<String>,
+}
+
+/// A IA escolhida nas Configurações.
+enum Engine {
+    Listed(&'static ModelSpec),
+    File(PathBuf),
+    Online(Api),
+}
+
+impl Engine {
+    fn of(app: &App) -> Engine {
+        if app.cfg.ai_model == "online" {
+            Engine::Online(app.cfg.ai_api.clone())
+        } else if let Some(p) = app.cfg.ai_model.strip_prefix("file:") {
+            Engine::File(PathBuf::from(p))
+        } else {
+            Engine::Listed(models::spec(&app.cfg.ai_model).unwrap_or(&models::CATALOG[1]))
+        }
+    }
+
+    fn ready(&self) -> bool {
+        match self {
+            Engine::Listed(m) => models::is_installed(m),
+            Engine::File(p) => p.is_file(),
+            Engine::Online(a) => a.ready(),
+        }
+    }
+
+    fn name(&self) -> String {
+        match self {
+            Engine::Listed(m) => m.name.to_owned(),
+            Engine::File(p) => p.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            Engine::Online(a) => a.model.trim().to_owned(),
+        }
+    }
 }
 
 /// De onde vêm as sugestões.
@@ -94,6 +138,8 @@ pub struct Review {
     tags: String,
     count: u32,
     style: Style,
+    level: Level,
+    guide: String,
     job: Option<Job>,
     status: Status,
     items: Vec<Item>,
@@ -148,6 +194,8 @@ fn open_page(app: &mut App, page: i64, title: String, subject: i64, scope: Scope
         tags: tr!("ai.default_tag"),
         count,
         style,
+        level: app.cfg.ai_level,
+        guide: app.ai.guide.clone(),
         job: None,
         status: Status::NeedModel,
         items: vec![],
@@ -158,16 +206,12 @@ fn open_page(app: &mut App, page: i64, title: String, subject: i64, scope: Scope
     });
 }
 
-fn selected_model(app: &App) -> &'static ModelSpec {
-    models::spec(&app.cfg.ai_model).unwrap_or(&models::CATALOG[1])
-}
-
 /// Começa (ou continua, com "Gerar mais") a geração.
 fn start(app: &mut App, ctx: &egui::Context) {
-    let model = selected_model(app);
+    let engine = Engine::of(app);
     let gpu = app.cfg.ai_gpu;
     let Some(r) = app.ai.review.as_mut() else { return };
-    if !models::is_installed(model) {
+    if !engine.ready() {
         r.status = Status::NeedModel;
         return;
     }
@@ -191,11 +235,20 @@ fn start(app: &mut App, ctx: &egui::Context) {
     };
     r.existing = before.into_iter().chain(r.items.iter().map(|i| i.s.key())).filter(|s| !s.trim().is_empty()).collect();
     let count = r.count;
-    let req = prompt::Request { source: &source, existing: &r.existing, count, style: r.style, focus: focus.as_deref() };
+    let req = prompt::Request { source: &source, existing: &r.existing, count, style: r.style, focus: focus.as_deref(), level: r.level, guide: &r.guide };
+    let (model, own_template, online) = match engine {
+        Engine::Listed(m) => (models::path_of(m), false, None),
+        Engine::File(p) => (p, true, None),
+        Engine::Online(a) => (PathBuf::new(), false, Some(a)),
+    };
     let request = GenRequest {
-        model: models::path_of(model),
+        model,
         gpu,
-        prompt: if questions { prompt::prompt_questions(&req) } else { prompt::prompt(&req) },
+        own_template,
+        online,
+        shape: prompt::json_shape(questions, r.style),
+        count,
+        chat: if questions { prompt::prompt_questions(&req) } else { prompt::prompt(&req) },
         grammar: if questions { prompt::grammar_questions(count) } else { prompt::grammar(r.style, count) },
         ids: source.ids.clone(),
         notes: source.text.clone(),
@@ -340,7 +393,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     poll(&mut r);
     // Nada começa sozinho: com o modelo pronto (inclusive logo depois de
     // baixar), a janela espera o usuário escolher as opções e clicar em Gerar.
-    if r.status == Status::NeedModel && models::is_installed(selected_model(app)) {
+    if r.status == Status::NeedModel && Engine::of(app).ready() {
         r.status = Status::Ready;
     }
 
@@ -537,7 +590,26 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
     });
 
     // ── Corpo ──
-    let mid = Rect::from_min_max(pos2(rect.left(), bar.bottom()), pos2(rect.right(), foot.top()));
+    let opts = Rect::from_min_size(pos2(rect.left(), bar.bottom()), vec2(rect.width(), 52.0));
+    ui.painter().hline(opts.x_range(), opts.bottom() - 0.5, Stroke::new(1.0, p.line));
+    let mut ou = ui.new_child(egui::UiBuilder::new().max_rect(opts.shrink2(vec2(24.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    ou.spacing_mut().item_spacing.x = 10.0;
+    ou.add_enabled_ui(!busy && !need_model, |ui| {
+        ui.spacing_mut().item_spacing.x = 10.0;
+        let mut li = [Level::Easy, Level::Medium, Level::Hard].iter().position(|l| *l == r.level).unwrap_or(1);
+        let (e, m, h) = (tr!("ai.level_easy"), tr!("ai.level_medium"), tr!("ai.level_hard"));
+        if segmented(ui, &[e.as_str(), m.as_str(), h.as_str()], &mut li, 26.0, false) {
+            r.level = [Level::Easy, Level::Medium, Level::Hard][li];
+            app.cfg.ai_level = r.level;
+            app.save_settings();
+        }
+        let w = ui.available_width();
+        if text_field(ui, &mut r.guide, &tr!("ai.guide_hint"), w, 32.0).on_hover_text(tr!("ai.guide_tip")).changed() {
+            app.ai.guide = r.guide.clone();
+        }
+    });
+
+    let mid = Rect::from_min_max(pos2(rect.left(), opts.bottom()), pos2(rect.right(), foot.top()));
     let mut mu = ui.new_child(egui::UiBuilder::new().max_rect(mid.shrink2(vec2(24.0, 16.0))).layout(egui::Layout::top_down(egui::Align::Min)));
     if need_model {
         egui::ScrollArea::vertical().id_salt("ai_setup").auto_shrink([false, false]).show(&mut mu, |ui| setup(app, ui));
@@ -571,7 +643,7 @@ fn status_line(app: &App, r: &Review, ui: &mut Ui) {
     let (s, color) = match &r.status {
         Status::NeedModel => (tr!("ai.status_need_model"), p.muted),
         Status::Ready => (tr!("ai.status_ready"), p.muted),
-        Status::Loading => (tr!("ai.status_loading", model = selected_model(app).name), p.muted),
+        Status::Loading => (tr!("ai.status_loading", model = Engine::of(app).name()), p.muted),
         Status::Reading(f) => (tr!("ai.status_reading", pct = pct(*f, 0)), p.muted),
         Status::Writing(n) if r.make == Make::Questions => (tr_n!("ai.status_writing_questions", *n), p.accent),
         Status::Writing(n) => (tr_n!("ai.status_writing", *n), p.accent),
@@ -768,6 +840,14 @@ fn setup(app: &mut App, ui: &mut Ui) {
     para(ui, &tr!("ai.setup_text"), serif(13.5, W::Regular), p.text2);
     model_list(app, ui);
     para(ui, &tr!("ai.privacy"), serif(12.5, W::Italic), p.muted);
+    // Modelo próprio ou IA online sem configurar: o caminho para a IA avançada.
+    if !matches!(Engine::of(app), Engine::Listed(_)) {
+        para(ui, &tr!("ai.setup_advanced"), serif(13.0, W::Regular), p.hard);
+        if button(ui, &tr!("ai.open_advanced"), Btn::Secondary, 32.0).clicked() {
+            app.ai.review = None;
+            app.go(super::Screen::Settings);
+        }
+    }
 }
 
 // ───────────────────────────── modelos ─────────────────────────────
@@ -776,23 +856,28 @@ fn gb(bytes: u64) -> String {
     format!("{} GB", crate::i18n::fixed(bytes as f64 / 1e9, 1))
 }
 
+/// Download terminado: o modelo baixado vira o modelo em uso.
+fn finish_download(app: &mut App) {
+    let Some(d) = &app.ai.download else { return };
+    let snap = d.snapshot();
+    match snap.phase {
+        Phase::Done => {
+            // Da lista, pelo id; por link, pelo arquivo na pasta dos modelos.
+            app.cfg.ai_model = if models::spec(&snap.model).is_some() { snap.model } else { format!("file:{}", models::models_dir().join(&snap.model).display()) };
+            app.save_settings();
+            app.ai.download = None;
+            engine::unload();
+            app.toast(tr!("ai.download_done"));
+        }
+        Phase::Cancelled => app.ai.download = None,
+        _ => {}
+    }
+}
+
 /// A lista de modelos com baixar / usar / apagar.
 fn model_list(app: &mut App, ui: &mut Ui) {
     let p = pal();
-    // Download terminado: vira o modelo em uso.
-    if let Some(d) = &app.ai.download {
-        let snap = d.snapshot();
-        match snap.phase {
-            Phase::Done => {
-                app.cfg.ai_model = snap.model.to_owned();
-                app.save_settings();
-                app.ai.download = None;
-                app.toast(tr!("ai.download_done"));
-            }
-            Phase::Cancelled => app.ai.download = None,
-            _ => {}
-        }
-    }
+    finish_download(app);
     for m in &models::CATALOG {
         let installed = models::is_installed(m);
         let in_use = app.cfg.ai_model == m.id;
@@ -892,6 +977,228 @@ pub fn settings_section(app: &mut App, ui: &mut Ui) {
             }
         });
         para(ui, &tr!("ai.privacy"), serif(12.0, W::Italic), p.muted);
+    });
+}
+
+/// "IA avançada" nas Configurações: qualquer modelo .gguf (escolhido no disco
+/// ou baixado por link) e IA online por API, com os serviços grátis em destaque.
+pub fn advanced_section(app: &mut App, ui: &mut Ui) {
+    let p = pal();
+    finish_download(app);
+    if let Some(rx) = &app.ai.models_probe {
+        if let Ok(res) = rx.try_recv() {
+            app.ai.models_probe = None;
+            match res {
+                Ok(list) if list.is_empty() => app.toast(tr!("ai.no_models_found")),
+                Ok(list) => app.ai.online_models = list,
+                Err(e) => app.error(e),
+            }
+        } else {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+        }
+    }
+    let engine = Engine::of(app);
+    super::settings::section(ui, &tr!("ai.advanced_title"), |ui| {
+        para(ui, &tr!("ai.advanced_text"), serif(13.0, W::Regular), p.text2);
+        let using = match &engine {
+            Engine::Listed(m) => tr!("ai.using_listed", name = m.name),
+            Engine::File(f) => tr!("ai.using_file", name = f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+            Engine::Online(a) => tr!("ai.using_online", name = a.model.trim(), service = online::provider(&a.provider).map(|s| s.name).filter(|n| !n.is_empty()).unwrap_or(a.url.trim())),
+        };
+        label(ui, &using, serif(13.0, W::Semi), if engine.ready() { p.good } else { p.hard });
+
+        // ── Modelo próprio (.gguf) ──
+        ui.add_space(6.0);
+        caps_label(ui, &tr!("ai.own_model"));
+        para(ui, &tr!("ai.own_model_text"), serif(12.5, W::Regular), p.muted);
+        let mut files = models::custom_models();
+        if let Engine::File(f) = &engine {
+            if !files.contains(f) {
+                files.insert(0, f.clone());
+            }
+        }
+        for f in &files {
+            let id = format!("file:{}", f.display());
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                let size = std::fs::metadata(f).map(|m| gb(m.len())).unwrap_or_default();
+                let name = f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let w = ui.available_width() - 110.0;
+                let (r, resp) = ui.allocate_exact_size(vec2(w.max(60.0), 30.0), Sense::hover());
+                text(ui.painter(), r.left_center(), Align2::LEFT_CENTER, &format!("{name}  ·  {size}"), serif(13.5, W::Regular), p.text, r.width());
+                resp.on_hover_text(f.display().to_string());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if app.cfg.ai_model == id {
+                        label(ui, &tr!("ai.in_use"), serif(12.5, W::Semi), p.good);
+                    } else if button(ui, &tr!("ai.use_model"), Btn::Secondary, 30.0).clicked() {
+                        app.cfg.ai_model = id.clone();
+                        app.save_settings();
+                        engine::unload();
+                    }
+                });
+            });
+        }
+        if files.is_empty() {
+            label(ui, &tr!("ai.no_own_models"), serif(12.5, W::Italic), p.muted);
+        }
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 10.0;
+            if button(ui, &tr!("ai.pick_gguf"), Btn::Secondary, 32.0).clicked() {
+                if let Some(path) = rfd::FileDialog::new().add_filter("GGUF", &["gguf"]).pick_file() {
+                    app.cfg.ai_model = format!("file:{}", path.display());
+                    app.save_settings();
+                    engine::unload();
+                }
+            }
+            if button(ui, &tr!("settings.open_folder"), Btn::Ghost, 32.0).clicked() {
+                let dir = models::models_dir();
+                let _ = std::fs::create_dir_all(&dir);
+                super::settings::open_folder(&dir);
+            }
+        });
+        // Baixar por link.
+        let busy = app.ai.download.as_ref().is_some_and(|d| matches!(d.snapshot().phase, Phase::Downloading | Phase::Verifying));
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 10.0;
+            let w = ui.available_width() - 130.0;
+            text_field(ui, &mut app.ai.link, &tr!("ai.link_hint"), w.max(120.0), 32.0);
+            let link = models::gguf_link(&app.ai.link);
+            if button_sized(ui, &tr!("ai.download"), None, Btn::Primary, vec2(110.0, 32.0), link.is_some() && !busy).clicked() {
+                if let Some((url, file)) = link {
+                    let c = ui.ctx().clone();
+                    app.ai.download = Some(models::Download::start_url(url, file, move || c.request_repaint()));
+                }
+            }
+        });
+        if !app.ai.link.trim().is_empty() && models::gguf_link(&app.ai.link).is_none() {
+            label(ui, &tr!("ai.link_invalid"), serif(12.0, W::Italic), p.again);
+        }
+        if let Some(s) = app.ai.download.as_ref().map(|d| d.snapshot()).filter(|s| models::spec(&s.model).is_none()) {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                let label_s = match &s.phase {
+                    Phase::Verifying => tr!("ai.verifying"),
+                    Phase::Failed(e) => tr!("ai.download_failed", error = e),
+                    _ => format!("{} · {}", s.model, tr!("ai.downloading", done = gb(s.done), total = if s.total > 0 { gb(s.total) } else { "?".into() }, speed = format!("{} MB/s", crate::i18n::fixed(s.speed / 1e6, 1)))),
+                };
+                let w = ui.available_width() - 110.0;
+                let (r, _) = ui.allocate_exact_size(vec2(w.max(60.0), 30.0), Sense::hover());
+                text(ui.painter(), pos2(r.left(), r.top() + 8.0), Align2::LEFT_CENTER, &label_s, serif(11.5, W::Regular), if matches!(s.phase, Phase::Failed(_)) { p.again } else { p.muted }, r.width());
+                progress(ui.painter(), Rect::from_min_size(pos2(r.left(), r.bottom() - 7.0), vec2(r.width(), 5.0)), if s.total > 0 { s.done as f32 / s.total as f32 } else { 0.0 }, p.accent);
+                if matches!(s.phase, Phase::Failed(_)) {
+                    if button(ui, &tr!("common.close"), Btn::Ghost, 30.0).clicked() {
+                        app.ai.download = None;
+                    }
+                } else if button(ui, &tr!("common.cancel"), Btn::Secondary, 30.0).clicked() {
+                    if let Some(d) = &app.ai.download {
+                        d.cancel();
+                    }
+                }
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
+            });
+        }
+
+        // ── IA online ──
+        ui.add_space(10.0);
+        caps_label(ui, &tr!("ai.online"));
+        para(ui, &tr!("ai.online_text"), serif(12.5, W::Regular), p.muted);
+        let mut api = app.cfg.ai_api.clone();
+        let cur = online::provider(&api.provider);
+        let cur_label = match cur {
+            Some(s) if s.id == "custom" => tr!("ai.custom_service"),
+            Some(s) if s.free => format!("{}  ·  {}", s.name, tr!("ai.free")),
+            Some(s) => s.name.to_owned(),
+            None => tr!("ai.pick_service"),
+        };
+        let w = ui.available_width();
+        super::settings::row(ui, &tr!("ai.service"), |ui| {
+            select_field(ui, "ai_service", &cur_label, None, 300.0, 32.0, |ui| {
+                // Os grátis primeiro, marcados; depois os pagos e o personalizado.
+                for s in online::PROVIDERS.iter().filter(|s| s.free).chain(online::PROVIDERS.iter().filter(|s| !s.free)) {
+                    let name = if s.id == "custom" { tr!("ai.custom_service") } else { s.name.to_owned() };
+                    let hint = if s.free { tr!("ai.free") } else if s.id == "custom" { String::new() } else { tr!("ai.paid") };
+                    let dot = s.free.then_some(p.good);
+                    if menu_item_ex(ui, &name, dot, api.provider == s.id, (!hint.is_empty()).then_some(hint.as_str())).clicked() {
+                        // O modelo sugerido só entra se o atual era o sugerido do serviço anterior (ou vazio).
+                        let old_default = cur.map(|c| c.model).unwrap_or("");
+                        if api.model.trim().is_empty() || api.model == old_default {
+                            api.model = s.model.to_owned();
+                        }
+                        api.provider = s.id.to_owned();
+                        api.url = s.url.to_owned();
+                        app.ai.online_models.clear();
+                    }
+                }
+            });
+        });
+        if let Some(s) = cur.filter(|s| !s.key_url.is_empty()) {
+            ui.horizontal(|ui| {
+                if ui.link(egui::RichText::new(tr!("ai.get_key", service = s.name)).color(p.accent).size(12.5)).clicked() {
+                    super::settings::open_folder(std::path::Path::new(s.key_url));
+                }
+            });
+        }
+        // Os três campos com a mesma largura, alinhados à direita como as outras linhas.
+        let fw = (w * 0.45).min(420.0);
+        super::settings::row(ui, &tr!("ai.api_url"), |ui| {
+            text_field(ui, &mut api.url, "https://…/v1", fw, 32.0);
+        });
+        super::settings::row(ui, &tr!("ai.api_key"), |ui| {
+            egui::Frame::NONE.fill(p.input).stroke(Stroke::new(1.0, p.border_control)).corner_radius(8).inner_margin(egui::Margin::symmetric(10, 8)).show(ui, |ui| {
+                ui.add(egui::TextEdit::singleline(&mut api.key).password(true).frame(egui::Frame::NONE).font(mono(12.5)).hint_text(tr!("ai.api_key_hint")).desired_width(fw - 22.0));
+            });
+        });
+        // O modelo ocupa a linha toda: os nomes (ex. "nvidia/…-reasoning:free") são longos.
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 10.0;
+            let (lr, _) = ui.allocate_exact_size(vec2(90.0, 32.0), Sense::hover());
+            text(ui.painter(), lr.left_center(), Align2::LEFT_CENTER, &tr!("ai.api_model"), serif(13.5, W::Regular), p.text2, 90.0);
+            let mw = (ui.available_width() - 140.0).max(160.0);
+            let searching = app.ai.models_probe.is_some();
+            if app.ai.online_models.is_empty() {
+                text_field(ui, &mut api.model, &tr!("ai.api_model_hint"), mw, 32.0);
+            } else {
+                let list = app.ai.online_models.clone();
+                let shown = if api.model.trim().is_empty() { tr!("ai.api_model_hint") } else { api.model.clone() };
+                select_field(ui, "ai_online_model", &shown, None, mw, 32.0, |ui| {
+                    for m in &list {
+                        // Na OpenRouter, os grátis terminam em ":free".
+                        let free = m.ends_with(":free");
+                        if menu_item_ex(ui, m, free.then_some(p.good), *m == api.model, None).on_hover_text(m).clicked() {
+                            api.model = m.clone();
+                        }
+                    }
+                });
+            }
+            if button_sized(ui, &tr!(if searching { "ai.searching" } else { "ai.list_models" }), None, Btn::Ghost, vec2(130.0, 32.0), !searching && !api.url.trim().is_empty()).clicked() {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let a = api.clone();
+                let c = ui.ctx().clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(online::list_models(&a));
+                    c.request_repaint();
+                });
+                app.ai.models_probe = Some(rx);
+            }
+        });
+        if api != app.cfg.ai_api {
+            app.cfg.ai_api = api.clone();
+            app.save_settings();
+        }
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 10.0;
+            if app.cfg.ai_model == "online" {
+                label(ui, &tr!("ai.in_use"), serif(12.5, W::Semi), p.good);
+            } else if button_sized(ui, &tr!("ai.use_online"), None, Btn::Primary, vec2(button_width(ui, &tr!("ai.use_online"), None, 13.0, 14.0), 32.0), api.ready()).clicked() {
+                app.cfg.ai_model = "online".into();
+                app.save_settings();
+            }
+            if !matches!(engine, Engine::Listed(_)) && button(ui, &tr!("ai.back_to_listed"), Btn::Ghost, 32.0).clicked() {
+                app.cfg.ai_model = models::DEFAULT_MODEL.into();
+                app.save_settings();
+            }
+        });
+        para(ui, &tr!("ai.online_note"), serif(12.0, W::Italic), p.muted);
     });
 }
 

@@ -559,10 +559,13 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
         toolbar(&mut ed, ui, left, &mut actions);
     }
     actions.append(&mut ed.queued);
+    // Com uma janela por cima (editor de cartão, IA, diálogo), teclas, coladas e
+    // arquivos soltos são dela: a página roda antes e os tomaria.
+    let overlay = app.overlay();
 
     // Ctrl+Z / Ctrl+Y (ou Ctrl+Shift+Z) valem para a página toda: as teclas
     // são tomadas antes dos campos de texto, que só desfariam o próprio bloco.
-    if ed.source.is_none() {
+    if ed.source.is_none() && !overlay {
         let ctx = ui.ctx().clone();
         let redo = ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) || i.consume_key(Modifiers::COMMAND, Key::Y));
         let undo = ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Z));
@@ -672,7 +675,7 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
 
     // Imagem colada / solta.
     let focused_idx = ed.focus.and_then(|id| ed.idx(id)).filter(|_| ui.ctx().memory(|m| m.focused().is_some()));
-    if let Some(name) = app.pasted_image.take() {
+    if let Some(name) = app.pasted_image.take_if(|_| !overlay) {
         if ed.source.is_some() {
             source_insert(&mut ed, ui.ctx(), &rich::image_markup(&name));
         } else {
@@ -680,7 +683,7 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
         insert_image_block(&mut ed, at, name);
         }
     }
-    for path in std::mem::take(&mut app.dropped) {
+    for path in if overlay { Vec::new() } else { std::mem::take(&mut app.dropped) } {
         if crate::media::is_image_path(&path) {
             match crate::media::store_file(&app.db.media_dir(), &path) {
                 Ok(s) => {
@@ -698,20 +701,20 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
     }
 
     // Ctrl+Shift+F: flashcard da seleção.
-    if ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::F)) {
+    if !overlay && ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::F)) {
         if let Some(i) = ed.focus.and_then(|id| ed.idx(id)) {
             actions.push(Action::Flashcard(i));
         }
     }
-    if !ed.picked.is_empty() && ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+    if !overlay && !ed.picked.is_empty() && ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
         ed.picked.clear();
     }
     // Delete/Backspace com blocos escolhidos e nenhum texto em edição: apaga todos.
-    if !ed.picked.is_empty() && !ui.ctx().egui_wants_keyboard_input() && ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Delete) || i.consume_key(Modifiers::NONE, Key::Backspace)) {
+    if !overlay && !ed.picked.is_empty() && !ui.ctx().egui_wants_keyboard_input() && ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Delete) || i.consume_key(Modifiers::NONE, Key::Backspace)) {
         actions.push(Action::DeleteMany(ed.picked_in_order()));
     }
     // Ctrl+Shift+G: cartões com IA da seleção ou da página.
-    if ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::G)) {
+    if !overlay && ui.ctx().input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::G)) {
         actions.push(Action::AiCards(None));
     }
 

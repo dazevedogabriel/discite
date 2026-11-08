@@ -109,10 +109,14 @@ pub struct Settings {
     /// No caderno a barra lateral fica recolhida (como no design) até o usuário abrir.
     pub notebook_sidebar_open: bool,
     /// IA local: modelo escolhido, uso da GPU e o último pedido (quantos, que tipo).
+    /// Id de um modelo da lista, "file:<caminho>" (um .gguf qualquer) ou "online".
     pub ai_model: String,
     pub ai_gpu: bool,
+    /// IA online por API (modo avançado).
+    pub ai_api: crate::ai::online::Api,
     pub ai_count: u32,
     pub ai_style: crate::ai::prompt::Style,
+    pub ai_level: crate::ai::prompt::Level,
 }
 
 impl Default for Settings {
@@ -121,8 +125,10 @@ impl Default for Settings {
             lang: Some("en".into()),
             ai_model: crate::ai::models::DEFAULT_MODEL.into(),
             ai_gpu: true,
+            ai_api: Default::default(),
             ai_count: 10,
             ai_style: Default::default(),
+            ai_level: Default::default(),
         }
     }
 }
@@ -559,9 +565,14 @@ impl App {
         }
     }
 
+    /// Há uma janela por cima da tela (diálogo, editor de cartão, IA…).
+    pub fn overlay(&self) -> bool {
+        self.modal.is_some() || self.note_editor.is_some() || self.question_editor.is_some() || self.palette.is_some() || self.ai.review.is_some() || self.log_view.is_some()
+    }
+
     fn shortcuts(&mut self, ctx: &egui::Context) {
         let typing = ctx.memory(|m| m.focused().is_some()) && ctx.egui_wants_keyboard_input();
-        let overlay = self.modal.is_some() || self.note_editor.is_some() || self.question_editor.is_some() || self.palette.is_some() || self.ai.review.is_some() || self.log_view.is_some();
+        let overlay = self.overlay();
         let cmd = |k: Key| ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, k));
         let cmd_shift = |k: Key| ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, k));
         if cmd(Key::K) {

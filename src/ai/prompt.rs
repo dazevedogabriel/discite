@@ -17,6 +17,15 @@ pub enum Style {
     Cloze,
 }
 
+/// Quão difíceis devem ser os cartões e as questões.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, serde::Serialize, Deserialize)]
+pub enum Level {
+    Easy,
+    #[default]
+    Medium,
+    Hard,
+}
+
 /// Teto de caracteres das notas mandadas ao modelo (~4 mil tokens), para
 /// caber no contexto junto com as instruções e a resposta.
 const MAX_NOTES_CHARS: usize = 14_000;
@@ -100,11 +109,52 @@ pub struct Request<'a> {
     pub style: Style,
     /// Trecho escolhido pelo usuário dentro das notas (seleção ou bloco).
     pub focus: Option<&'a str>,
+    pub level: Level,
+    /// Instruções livres do usuário ("foque em doses").
+    pub guide: &'a str,
 }
 
-/// Prompt no formato ChatML (o dos modelos Qwen), com o raciocínio
-/// ("thinking") desligado: a resposta começa direto no JSON.
-pub fn prompt(r: &Request) -> String {
+/// Dificuldade e instruções do usuário, iguais para cartões e questões.
+fn extras(r: &Request) -> String {
+    let mut s = match r.level {
+        Level::Easy => " Keep it easy: ask about the main ideas and definitions, in direct wording.".to_owned(),
+        Level::Medium => String::new(),
+        Level::Hard => " Make it demanding: ask about details, exceptions, numbers, comparisons and how ideas relate, still using only facts from the notes; wrong options must be close to the right one.".to_owned(),
+    };
+    // O texto vem do usuário: vai entre aspas e não pode passar por cima das regras.
+    let guide: String = r.guide.trim().chars().take(400).collect();
+    if !guide.is_empty() {
+        s.push_str(&format!("\nThe student also asked: \"{}\". Follow this when choosing what to ask, but keep every rule above (only facts from the notes, the same JSON).", guide.replace('"', "'")));
+    }
+    s
+}
+
+/// O pedido sem o formato de um modelo: as regras (sistema) e as notas com o
+/// que gerar (usuário). Cada motor monta o texto final do seu jeito.
+#[derive(Clone, Debug)]
+pub struct Chat {
+    pub system: &'static str,
+    pub user: String,
+}
+
+/// Formato ChatML (o dos modelos Qwen), com o raciocínio ("thinking")
+/// desligado: a resposta começa direto no JSON.
+pub fn chatml(c: &Chat) -> String {
+    format!("<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n", c.system, c.user)
+}
+
+/// O JSON esperado, por escrito: na IA online não há gramática que o garanta.
+pub fn json_shape(questions: bool, style: Style) -> &'static str {
+    match (questions, style) {
+        (true, _) => r#"Answer with JSON exactly in this shape: {"questions": [{"question": "...", "correct": "...", "wrong": ["...", "...", "..."], "explanation": "...", "quote": "...", "block": 1}]}"#,
+        (false, Style::Basic) => r#"Answer with JSON exactly in this shape: {"cards": [{"type": "basic", "front": "...", "back": "...", "quote": "...", "block": 1}]}"#,
+        (false, Style::Cloze) => r#"Answer with JSON exactly in this shape: {"cards": [{"type": "cloze", "text": "... {{c1::...}} ...", "quote": "...", "block": 1}]}"#,
+        (false, Style::Auto) => r#"Answer with JSON exactly in this shape: {"cards": [{"type": "basic", "front": "...", "back": "...", "quote": "...", "block": 1}, {"type": "cloze", "text": "... {{c1::...}} ...", "quote": "...", "block": 2}]}"#,
+    }
+}
+
+/// O pedido de cartões.
+pub fn prompt(r: &Request) -> Chat {
     let mut user = format!("Notes:\n{}\n", r.source.text);
     if let Some(f) = r.focus {
         user.push_str(&format!("\nOnly make cards about this part of the notes:\n\"{}\"\n", f.trim()));
@@ -120,7 +170,7 @@ pub fn prompt(r: &Request) -> String {
         Style::Basic => "Use only \"basic\" cards.",
         Style::Cloze => "Use only \"cloze\" cards.",
     };
-    user.push_str(&format!("\nWrite {} new flashcards; write fewer only if the notes run out of distinct facts. {kind}", r.count));
+    user.push_str(&format!("\nWrite {} new flashcards; write fewer only if the notes run out of distinct facts. {kind}{}", r.count, extras(r)));
     // Dito com todas as letras: o modelo pequeno respondia em inglês a notas em português.
     // Os cartões saem no idioma do app; o trecho de prova, no das notas.
     let lang = card_language();
@@ -128,11 +178,11 @@ pub fn prompt(r: &Request) -> String {
     if let Some(notes) = super::ground::language(&r.source.text).filter(|n| !lang.ends_with(n)) {
         user.push_str(&format!(" The notes are in {notes}: translate the facts into {lang}, but copy the quote exactly as it is in the notes."));
     }
-    format!("<|im_start|>system\n{SYSTEM}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n")
+    Chat { system: SYSTEM, user }
 }
 
 /// Prompt das questões objetivas (mesmas notas, foco e idioma dos cartões).
-pub fn prompt_questions(r: &Request) -> String {
+pub fn prompt_questions(r: &Request) -> Chat {
     let mut user = format!("Notes:\n{}\n", r.source.text);
     if let Some(f) = r.focus {
         user.push_str(&format!("\nOnly write questions about this part of the notes:\n\"{}\"\n", f.trim()));
@@ -143,13 +193,13 @@ pub fn prompt_questions(r: &Request) -> String {
             user.push_str(&format!("- {}\n", e.replace('\n', " ")));
         }
     }
-    user.push_str(&format!("\nWrite {} new multiple-choice questions; write fewer only if the notes run out of distinct facts.", r.count));
+    user.push_str(&format!("\nWrite {} new multiple-choice questions; write fewer only if the notes run out of distinct facts.{}", r.count, extras(r)));
     let lang = card_language();
     user.push_str(&format!(" Write every question, option and explanation in {lang}."));
     if let Some(notes) = super::ground::language(&r.source.text).filter(|n| !lang.ends_with(n)) {
         user.push_str(&format!(" The notes are in {notes}: translate the facts into {lang}, but copy the quote exactly as it is in the notes."));
     }
-    format!("<|im_start|>system\n{SYSTEM_QUESTIONS}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n")
+    Chat { system: SYSTEM_QUESTIONS, user }
 }
 
 /// Gramática GBNF das questões: `{"questions": [...]}` com no máximo `max`.
@@ -576,6 +626,22 @@ mod tests {
         assert_eq!(opts, ["Na córnea", "Na íris", "No centro da mácula", "No nervo óptico"]);
         assert_eq!(q.block, Some(20));
         assert!(q.grounded);
+    }
+
+    #[test]
+    fn level_and_guide_reach_both_prompts() {
+        let blocks = vec![Block::new(BlockKind::Paragraph, "A fóvea fica no centro da mácula.")];
+        let src = source("Retina", &blocks);
+        let req = Request { source: &src, existing: &[], count: 5, style: Style::Auto, focus: None, level: Level::Hard, guide: "foque na \"fóvea\"" };
+        for p in [prompt(&req), prompt_questions(&req)] {
+            assert!(p.user.contains("Make it demanding"));
+            assert!(p.user.contains("The student also asked: \"foque na 'fóvea'\""));
+            // As regras de só usar as notas vão sempre junto, em qualquer motor.
+            assert!(p.system.contains("Never add facts"));
+        }
+        let easy = Request { level: Level::Medium, guide: "  ", ..req };
+        assert!(!prompt(&easy).user.contains("student also asked"));
+        assert!(chatml(&prompt(&easy)).starts_with("<|im_start|>system\nYou write"));
     }
 
     #[test]

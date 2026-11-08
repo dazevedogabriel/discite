@@ -88,12 +88,37 @@ pub fn remove(m: &ModelSpec) -> Result<()> {
 }
 
 fn part_path(m: &ModelSpec) -> PathBuf {
-    models_dir().join(format!("{}.part", m.file))
+    part_of(m.file)
+}
+
+fn part_of(file: &str) -> PathBuf {
+    models_dir().join(format!("{file}.part"))
 }
 
 /// Quanto de um download interrompido já está no disco.
 pub fn partial_bytes(m: &ModelSpec) -> u64 {
     std::fs::metadata(part_path(m)).map(|md| md.len()).unwrap_or(0)
+}
+
+/// Arquivos .gguf na pasta dos modelos que não são da lista (modo avançado).
+pub fn custom_models() -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(models_dir())
+        .map(|rd| rd.flatten().map(|e| e.path()).collect::<Vec<PathBuf>>())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p: &PathBuf| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("gguf")))
+        .filter(|p| !CATALOG.iter().any(|m| p.file_name().is_some_and(|n| n == m.file)))
+        .collect();
+    v.sort();
+    v
+}
+
+/// Nome do arquivo de um link de download de .gguf (aceita o link "blob" do
+/// Hugging Face, que é a página, trocando por "resolve", que é o arquivo).
+pub fn gguf_link(url: &str) -> Option<(String, String)> {
+    let url = url.trim().replace("/blob/", "/resolve/");
+    let name = url.split(['?', '#']).next()?.rsplit('/').next()?.to_owned();
+    (url.starts_with("http") && name.to_ascii_lowercase().ends_with(".gguf") && name.len() > 5).then_some((url, name))
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -107,7 +132,8 @@ pub enum Phase {
 
 #[derive(Clone, Debug)]
 pub struct Progress {
-    pub model: &'static str,
+    /// Id do modelo da lista, ou o nome do arquivo num download por link.
+    pub model: String,
     pub done: u64,
     pub total: u64,
     pub phase: Phase,
@@ -123,11 +149,22 @@ pub struct Download {
 
 impl Download {
     pub fn start(m: &'static ModelSpec, repaint: impl Fn() + Send + 'static) -> Download {
-        let progress = Arc::new(Mutex::new(Progress { model: m.id, done: partial_bytes(m), total: m.size, phase: Phase::Downloading, speed: 0.0 }));
+        Download::begin(m.id.to_owned(), Target { url: m.url.to_owned(), file: m.file.to_owned(), size: Some(m.size), sha256: Some(m.sha256) }, repaint)
+    }
+
+    /// Download de um .gguf qualquer por link (modo avançado): sem SHA-256
+    /// conhecido, confere só que o arquivo começa como um GGUF.
+    pub fn start_url(url: String, file: String, repaint: impl Fn() + Send + 'static) -> Download {
+        Download::begin(file.clone(), Target { url, file, size: None, sha256: None }, repaint)
+    }
+
+    fn begin(id: String, t: Target, repaint: impl Fn() + Send + 'static) -> Download {
+        let have = std::fs::metadata(part_of(&t.file)).map(|md| md.len()).unwrap_or(0);
+        let progress = Arc::new(Mutex::new(Progress { model: id, done: have, total: t.size.unwrap_or(0), phase: Phase::Downloading, speed: 0.0 }));
         let cancel = Arc::new(AtomicBool::new(false));
         let (p, c) = (progress.clone(), cancel.clone());
         std::thread::spawn(move || {
-            let result = fetch(m, &p, &c, &repaint);
+            let result = fetch(&t, &p, &c, &repaint);
             let phase = match result {
                 Ok(()) => Phase::Done,
                 Err(_) if c.load(Ordering::Relaxed) => Phase::Cancelled,
@@ -148,18 +185,25 @@ impl Download {
     }
 }
 
-fn fetch(m: &ModelSpec, progress: &Mutex<Progress>, cancel: &AtomicBool, repaint: &dyn Fn()) -> Result<()> {
+struct Target {
+    url: String,
+    file: String,
+    size: Option<u64>,
+    sha256: Option<&'static str>,
+}
+
+fn fetch(m: &Target, progress: &Mutex<Progress>, cancel: &AtomicBool, repaint: &dyn Fn()) -> Result<()> {
     std::fs::create_dir_all(models_dir())?;
-    let part = part_path(m);
-    let mut have = partial_bytes(m);
-    if have < m.size {
+    let part = part_of(&m.file);
+    let mut have = std::fs::metadata(&part).map(|md| md.len()).unwrap_or(0);
+    if m.size.is_none_or(|s| have < s) {
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .timeout_connect(Some(Duration::from_secs(20)))
             .timeout_recv_body(Some(Duration::from_secs(60)))
             .user_agent(concat!("Discite/", env!("CARGO_PKG_VERSION")))
             .build()
             .into();
-        let mut req = agent.get(m.url);
+        let mut req = agent.get(&m.url);
         if have > 0 {
             req = req.header("Range", &format!("bytes={have}-"));
         }
@@ -169,6 +213,9 @@ fn fetch(m: &ModelSpec, progress: &Mutex<Progress>, cancel: &AtomicBool, repaint
         if !resume {
             have = 0;
         }
+        // Tamanho total: o da lista ou o que o servidor informa.
+        let total = m.size.unwrap_or_else(|| resp.body().content_length().map(|n| n + have).unwrap_or(0));
+        progress.lock().unwrap().total = total;
         let mut file = std::fs::OpenOptions::new().create(true).write(true).append(resume).truncate(!resume).open(&part)?;
         let mut reader = resp.into_body().into_reader();
         let mut buf = vec![0u8; 1 << 16];
@@ -194,19 +241,32 @@ fn fetch(m: &ModelSpec, progress: &Mutex<Progress>, cancel: &AtomicBool, repaint
             }
         }
         file.flush()?;
-        if have < m.size {
-            bail!("incomplete download ({have} of {} bytes)", m.size);
+        if total > 0 && have < total {
+            bail!("incomplete download ({have} of {total} bytes)");
         }
     }
     progress.lock().unwrap().phase = Phase::Verifying;
     repaint();
-    let sum = sha256_file(&part, cancel)?;
-    if !sum.eq_ignore_ascii_case(m.sha256) {
-        // Arquivo corrompido: começa do zero na próxima tentativa.
-        let _ = std::fs::remove_file(&part);
-        bail!("checksum mismatch");
+    match m.sha256 {
+        Some(expected) => {
+            let sum = sha256_file(&part, cancel)?;
+            if !sum.eq_ignore_ascii_case(expected) {
+                // Arquivo corrompido: começa do zero na próxima tentativa.
+                let _ = std::fs::remove_file(&part);
+                bail!("checksum mismatch");
+            }
+        }
+        None => {
+            // Link errado costuma baixar uma página HTML: o GGUF começa com "GGUF".
+            let mut magic = [0u8; 4];
+            std::fs::File::open(&part)?.read_exact(&mut magic)?;
+            if &magic != b"GGUF" {
+                let _ = std::fs::remove_file(&part);
+                bail!("not a GGUF model file");
+            }
+        }
     }
-    std::fs::rename(&part, path_of(m))?;
+    std::fs::rename(&part, models_dir().join(&m.file))?;
     Ok(())
 }
 
@@ -225,4 +285,15 @@ fn sha256_file(path: &Path, cancel: &AtomicBool) -> Result<String> {
         h.update(&buf[..n]);
     }
     Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn gguf_links() {
+        let (url, name) = super::gguf_link("https://huggingface.co/unsloth/Qwen3-14B-GGUF/blob/main/Qwen3-14B-Q4_K_M.gguf?download=true").unwrap();
+        assert_eq!(url, "https://huggingface.co/unsloth/Qwen3-14B-GGUF/resolve/main/Qwen3-14B-Q4_K_M.gguf?download=true");
+        assert_eq!(name, "Qwen3-14B-Q4_K_M.gguf");
+        assert!(super::gguf_link("https://huggingface.co/unsloth/Qwen3-14B-GGUF").is_none());
+    }
 }

@@ -816,6 +816,8 @@ impl Db {
         let mut all: Vec<String> = st.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
         // Imagens das questões (a do enunciado e as que estejam no texto).
         all.extend(self.question_media()?);
+        // E as das versões antigas das páginas: "Restaurar versão" precisa delas.
+        all.extend(self.conn.prepare("SELECT snapshot FROM page_versions")?.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?);
         let mut out = Vec::new();
         if let Ok(rd) = std::fs::read_dir(self.media_dir()) {
             for e in rd.flatten() {
@@ -1373,5 +1375,21 @@ mod tests {
         assert_eq!(db.backlinks(b).unwrap()[0].id, a);
         let hits = db.search_pages("metafase", 10).unwrap();
         assert_eq!(hits[0].0, a);
+    }
+
+    #[test]
+    fn image_only_in_an_old_version_is_not_orphan() {
+        let db = temp_db();
+        let s = db.add_subject("Bio", 0).unwrap();
+        let page = db.add_page(s, None, "Célula").unwrap();
+        let mut img = Block::new(BlockKind::Image, "");
+        img.media = "antiga.png".into();
+        db.add_version(page, "Célula", &[img]).unwrap();
+        db.save_blocks(page, "Célula", &[]).unwrap();
+        std::fs::create_dir_all(db.media_dir()).unwrap();
+        for f in ["antiga.png", "solta.png"] {
+            std::fs::write(db.media_dir().join(f), b"x").unwrap();
+        }
+        assert_eq!(db.orphan_media().unwrap(), vec!["solta.png".to_owned()]);
     }
 }

@@ -83,12 +83,16 @@ fn eval_cards() {
     for (title, blocks) in corpus() {
         let source = prompt::source(&title, &blocks);
         let count = 10;
-        let req = prompt::Request { source: &source, existing: &[], count, style: Style::Auto, focus: None };
+        let req = prompt::Request { source: &source, existing: &[], count, style: Style::Auto, focus: None, level: prompt::Level::Medium, guide: "" };
         let job = engine::generate(
             GenRequest {
                 model: model.clone().into(),
                 gpu,
-                prompt: prompt::prompt(&req),
+                chat: prompt::prompt(&req),
+                own_template: false,
+                online: None,
+                shape: "",
+                count,
                 grammar: prompt::grammar(Style::Auto, count),
                 ids: source.ids.clone(),
                 notes: source.text.clone(),
