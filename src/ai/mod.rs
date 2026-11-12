@@ -3,6 +3,8 @@
 //! qualquer) ou com uma IA online por API (`online.rs`). Em todos os casos as
 //! regras e a conferência com as notas são as mesmas.
 
+pub mod actions;
+pub mod agent;
 pub mod engine;
 pub mod ground;
 #[cfg(test)]

@@ -346,7 +346,9 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64) {
     let focus_mode = app.page.as_ref().is_some_and(|e| e.focus_mode);
     // Janela estreita (metade da tela): a árvore de páginas afina.
     let tree_w = if focus_mode { 0.0 } else if full.width() < 760.0 { 176.0 } else { 214.0 };
-    let aside_w = if focus_mode || full.width() < 1000.0 { 0.0 } else { 248.0 };
+    // O painel do assistente (Ctrl+J) toma o lugar da lateral da página.
+    let assistant = app.assistant.panel && !focus_mode && full.width() >= 760.0;
+    let aside_w = if assistant { 340.0 } else if focus_mode || full.width() < 1000.0 { 0.0 } else { 248.0 };
     if tree_w > 0.0 {
         let tree = Rect::from_min_size(full.min, vec2(tree_w, full.height()));
         let mut tu = ui.new_child(egui::UiBuilder::new().max_rect(tree));
@@ -359,10 +361,14 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64) {
         return;
     }
     if let Some(ed) = app.page.as_mut() {
-        ed.aside_shown = aside_w > 0.0;
+        ed.aside_shown = aside_w > 0.0 && !assistant;
     }
     editor(app, &mut mu, main, sid);
-    if aside_w > 0.0 {
+    if assistant {
+        let rect = Rect::from_min_max(pos2(full.right() - aside_w, full.top()), full.max);
+        let mut au = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+        super::assistant::panel(app, &mut au, rect);
+    } else if aside_w > 0.0 {
         let aside = Rect::from_min_max(pos2(full.right() - aside_w, full.top()), full.max);
         ui.painter().vline(aside.left(), aside.y_range(), Stroke::new(1.0, p.line));
         let mut au = ui.new_child(egui::UiBuilder::new().max_rect(aside.shrink(18.0)).layout(egui::Layout::top_down(egui::Align::Min)));
@@ -561,7 +567,7 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
     actions.append(&mut ed.queued);
     // Com uma janela por cima (editor de cartão, IA, diálogo), teclas, coladas e
     // arquivos soltos são dela: a página roda antes e os tomaria.
-    let overlay = app.overlay();
+    let overlay = app.overlay() || super::assistant::typing(ui.ctx());
 
     // Ctrl+Z / Ctrl+Y (ou Ctrl+Shift+Z) valem para a página toda: as teclas
     // são tomadas antes dos campos de texto, que só desfariam o próprio bloco.
@@ -861,6 +867,9 @@ fn page_controls(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, act
     egui::Popup::menu(&more).frame(popup_frame()).width(240.0).show(|ui| {
         if menu_item(ui, &tr!(if ed.focus_mode { "page.exit_focus" } else { "page.focus" }), ed.focus_mode).clicked() {
             ed.focus_mode = !ed.focus_mode;
+        }
+        if menu_item_ex(ui, &tr!("assistant.title"), None, app.assistant.panel, Some(&keys("Ctrl J"))).clicked() {
+            app.assistant.panel = !app.assistant.panel;
         }
         if menu_item(ui, &tr!("page.history"), false).clicked() {
             ed.flush(&app.db);

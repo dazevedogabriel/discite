@@ -285,6 +285,30 @@ impl Db {
         Ok(q.id)
     }
 
+    /// Questões que têm todas as palavras no enunciado, nas alternativas ou na explicação.
+    pub fn search_questions(&self, query: &str, limit: usize) -> Result<Vec<Question>> {
+        let words: Vec<String> = query.split_whitespace().map(|w| format!("%{}%", w.replace(['%', '_'], ""))).collect();
+        let cond = if words.is_empty() {
+            "1".to_owned()
+        } else {
+            (1..=words.len()).map(|i| format!("(stem || ' ' || options || ' ' || explanation) LIKE ?{i}")).collect::<Vec<_>>().join(" AND ")
+        };
+        let mut st = self.conn.prepare(&format!("SELECT {COLS} FROM questions WHERE {cond} ORDER BY id DESC LIMIT {limit}"))?;
+        let v = st.query_map(rusqlite::params_from_iter(words.iter()), from_row)?.collect::<rusqlite::Result<_>>()?;
+        Ok(v)
+    }
+
+    /// Desfaz uma exclusão (o histórico de respostas não volta; os totais, sim).
+    pub fn restore_question(&self, q: &Question) -> Result<()> {
+        let now = srs::now_ms();
+        self.conn.execute(
+            "INSERT OR IGNORE INTO questions (id, bank_id, stem, image, options, answer, explanation, source_page, source_block, due, interval, attempts, correct, last_ok, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)",
+            params![q.id, q.bank_id, q.stem, q.image, serde_json::to_string(&q.options)?, q.answer as i64, q.explanation, q.source_page, q.source_block, q.due, q.interval as f64, q.attempts as i64, q.correct as i64, q.last_ok, now],
+        )?;
+        Ok(())
+    }
+
     pub fn delete_questions(&self, ids: &[i64]) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(&format!("DELETE FROM qlog WHERE question_id IN ({})", ids_sql(ids)), [])?;

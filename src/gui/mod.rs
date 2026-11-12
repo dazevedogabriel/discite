@@ -5,6 +5,7 @@
 //! paleta de comandos e avisos.
 
 mod ai;
+mod assistant;
 mod browser;
 mod charts;
 mod dashboard;
@@ -117,6 +118,9 @@ pub struct Settings {
     pub ai_count: u32,
     pub ai_style: crate::ai::prompt::Style,
     pub ai_level: crate::ai::prompt::Level,
+    /// O que o assistente faz sem perguntar: criar/editar e apagar.
+    pub assistant_write: assistant::Perm,
+    pub assistant_delete: assistant::Perm,
 }
 
 impl Default for Settings {
@@ -129,6 +133,8 @@ impl Default for Settings {
             ai_count: 10,
             ai_style: Default::default(),
             ai_level: Default::default(),
+            assistant_write: Default::default(),
+            assistant_delete: Default::default(),
         }
     }
 }
@@ -152,6 +158,8 @@ pub enum Screen {
     Quiz,
     Preset(i64),
     Settings,
+    /// Assistente que responde a partir das notas.
+    Assistant,
 }
 
 pub struct App {
@@ -192,6 +200,7 @@ pub struct App {
     /// Arquivos soltos na janela neste quadro.
     pub dropped: Vec<std::path::PathBuf>,
     pub ai: ai::AiState,
+    pub assistant: assistant::State,
     pub log_view: Option<logview::LogView>,
     /// Largura da janela no último quadro.
     pub window_w: f32,
@@ -240,6 +249,7 @@ impl App {
             pasted_image: None,
             dropped: vec![],
             ai: Default::default(),
+            assistant: Default::default(),
             log_view: None,
             window_w: 1280.0,
             narrow_sidebar: false,
@@ -584,6 +594,14 @@ impl App {
         if cmd_shift(Key::A) {
             self.add_note();
         }
+        // Ctrl+J: no caderno, o painel do assistente; fora dele, a tela.
+        if cmd(Key::J) {
+            if matches!(self.screen, Screen::Subject(_, Tab::Notebook)) {
+                self.assistant.panel = !self.assistant.panel;
+            } else {
+                self.go(Screen::Assistant);
+            }
+        }
         if cmd(Key::Backslash) {
             let open = self.sidebar_is_collapsed();
             self.set_sidebar(open);
@@ -792,6 +810,9 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
     if nav_row(ui, "03", &tr!("nav.cards"), scr == Screen::Browser).clicked() {
         app.go(Screen::Browser);
     }
+    if nav_row(ui, "04", &tr!("nav.assistant"), scr == Screen::Assistant).clicked() {
+        app.go(Screen::Assistant);
+    }
     ui.add_space(22.0);
 
     {
@@ -931,7 +952,7 @@ fn sidebar_collapsed(app: &mut App, ui: &mut egui::Ui) {
     let (r, _) = ui.allocate_exact_size(vec2(40.0, 36.0), Sense::hover());
     logo(ui, Rect::from_center_size(r.center() - vec2(0.0, 4.0), vec2(30.0, 30.0)));
     let scr = app.screen;
-    for (num, key, target) in [("01", "nav.dashboard", Screen::Dashboard), ("02", "nav.stats", Screen::Stats), ("03", "nav.cards", Screen::Browser)] {
+    for (num, key, target) in [("01", "nav.dashboard", Screen::Dashboard), ("02", "nav.stats", Screen::Stats), ("03", "nav.cards", Screen::Browser), ("04", "nav.assistant", Screen::Assistant)] {
         let label = &tr!(key);
         let on = scr == target;
         let (r, resp) = ui.allocate_exact_size(vec2(40.0, 36.0), Sense::click());
@@ -1007,6 +1028,7 @@ impl eframe::App for App {
             self.refresh_counts();
         }
         preset::poll_jobs(self);
+        assistant::poll(self);
 
         // 28 pt no Mac: a altura da barra nativa, com os semáforos centralizados.
         egui::Panel::top("titlebar").exact_size(if MAC { 28.0 } else { 38.0 }).frame(egui::Frame::NONE).show_separator_line(false).show(ui, |ui| title_bar(self, ui));
@@ -1030,6 +1052,7 @@ impl eframe::App for App {
             Screen::Quiz => questions::quiz_ui(self, ui),
             Screen::Preset(id) => preset::ui(self, ui, id),
             Screen::Settings => settings::ui(self, ui),
+            Screen::Assistant => assistant::ui(self, ui),
         });
 
         note_editor::show(self, &ctx);

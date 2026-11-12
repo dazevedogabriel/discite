@@ -218,6 +218,14 @@ CREATE TABLE IF NOT EXISTS qlog (
 );
 CREATE INDEX IF NOT EXISTS idx_qlog_question ON qlog(question_id, at);
 
+-- Conversas do assistente: `data` é o JSON da conversa (gui/assistant.rs).
+CREATE TABLE IF NOT EXISTS assistant_chats (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  data TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_pages USING fts5(page_id UNINDEXED, block_id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2');
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_notes USING fts5(note_id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2');
 "#;
@@ -543,6 +551,33 @@ impl Db {
         Ok(())
     }
 
+    // ─────────────────────── conversas do assistente ───────────────────────
+
+    pub fn save_chat(&self, id: i64, title: &str, data: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO assistant_chats (id, title, updated_at, data) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at, data = excluded.data",
+            params![id, title, srs::now_ms(), data],
+        )?;
+        Ok(())
+    }
+
+    /// (id, título, última mudança), da mais recente para a mais antiga.
+    pub fn list_chats(&self) -> Result<Vec<(i64, String, i64)>> {
+        let mut st = self.conn.prepare("SELECT id, title, updated_at FROM assistant_chats ORDER BY updated_at DESC")?;
+        let v = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<rusqlite::Result<_>>()?;
+        Ok(v)
+    }
+
+    pub fn chat_data(&self, id: i64) -> Result<Option<String>> {
+        Ok(self.conn.query_row("SELECT data FROM assistant_chats WHERE id = ?1", [id], |r| r.get(0)).optional()?)
+    }
+
+    pub fn delete_chat(&self, id: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM assistant_chats WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
     // ─────────────────────────── disciplinas ───────────────────────────
 
     pub fn list_subjects(&self) -> Result<Vec<Subject>> {
@@ -818,6 +853,8 @@ impl Db {
         all.extend(self.question_media()?);
         // E as das versões antigas das páginas: "Restaurar versão" precisa delas.
         all.extend(self.conn.prepare("SELECT snapshot FROM page_versions")?.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?);
+        // E as anexadas nas conversas do assistente.
+        all.extend(self.conn.prepare("SELECT data FROM assistant_chats")?.query_map([], |r| r.get::<_, String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?);
         let mut out = Vec::new();
         if let Ok(rd) = std::fs::read_dir(self.media_dir()) {
             for e in rd.flatten() {
@@ -1047,6 +1084,24 @@ impl Db {
             tx.execute(&format!("DELETE FROM cards WHERE note_id IN ({l})"), [])?;
             tx.execute(&format!("DELETE FROM notes WHERE id IN ({l})"), [])?;
             tx.execute(&format!("DELETE FROM fts_notes WHERE note_id IN ({l})"), [])?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Desfaz uma exclusão: grava de novo as notas e os cartões, com o agendamento.
+    /// (O histórico de revisões nunca é apagado com a nota, então volta junto.)
+    pub fn restore_notes(&self, notes: &[Note], cards: &[Card]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        for n in notes {
+            self.write_note_row(n)?;
+        }
+        for c in cards {
+            self.conn.execute(
+                "INSERT OR IGNORE INTO cards (id, note_id, deck_id, ord, due, position, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+                params![c.id, c.note_id, c.deck_id, c.ord as i64, c.s.due, c.position, c.created_at],
+            )?;
+            self.save_card(c)?;
         }
         tx.commit()?;
         Ok(())
@@ -1361,6 +1416,44 @@ mod tests {
         let ords: Vec<u32> = db.note_cards(n.id).unwrap().iter().map(|c| c.ord).collect();
         assert_eq!(ords, vec![0, 2]);
         assert!(db.find_duplicate(NoteKind::Cloze, &n.fields, 0).unwrap().is_some());
+    }
+
+    #[test]
+    fn deleted_notes_come_back_with_their_schedule() {
+        let db = temp_db();
+        let s = db.add_subject("Bio", 0).unwrap();
+        let deck = db.list_decks().unwrap().into_iter().find(|d| d.subject_id == s).unwrap().id;
+        let mut n = Note::new(NoteKind::Basic);
+        n.fields = vec!["Frente".into(), "Verso".into(), String::new()];
+        db.add_note(&mut n, deck).unwrap();
+        let mut card = db.note_cards(n.id).unwrap().remove(0);
+        card.s.reps = 7;
+        card.s.lapses = 2;
+        db.save_card(&card).unwrap();
+        let (note, cards) = (db.note(n.id).unwrap().unwrap(), db.note_cards(n.id).unwrap());
+        db.delete_notes(&[n.id]).unwrap();
+        assert!(db.note(n.id).unwrap().is_none());
+        db.restore_notes(&[note.clone()], &cards).unwrap();
+        assert_eq!(db.note(n.id).unwrap().unwrap().fields, note.fields);
+        let back = db.note_cards(n.id).unwrap();
+        assert_eq!((back[0].id, back[0].s.reps, back[0].s.lapses), (card.id, 7, 2));
+    }
+
+    #[test]
+    fn chats_save_list_and_delete() {
+        let db = temp_db();
+        db.save_chat(1, "Primeira", "{}").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(3));
+        db.save_chat(2, "Segunda", "{}").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(3));
+        // Salvar de novo atualiza a mesma conversa e a põe no topo.
+        db.save_chat(1, "Primeira, editada", r#"{"x":1}"#).unwrap();
+        let list = db.list_chats().unwrap();
+        assert_eq!(list.iter().map(|c| (c.0, c.1.as_str())).collect::<Vec<_>>(), vec![(1, "Primeira, editada"), (2, "Segunda")]);
+        assert_eq!(db.chat_data(1).unwrap().as_deref(), Some(r#"{"x":1}"#));
+        db.delete_chat(1).unwrap();
+        assert_eq!(db.chat_data(1).unwrap(), None);
+        assert_eq!(db.list_chats().unwrap().len(), 1);
     }
 
     #[test]

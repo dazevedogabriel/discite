@@ -80,6 +80,21 @@ fn http_error(status: u16, body: &str) -> anyhow::Error {
     anyhow!("HTTP {status}: {}", msg.trim())
 }
 
+/// Um pedido sem streaming (o assistente): devolve o JSON da resposta.
+pub fn post_json(api: &Api, path: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
+    let mut req = agent(120).post(&endpoint(api, path)).header("Content-Type", "application/json");
+    if !api.key.trim().is_empty() {
+        req = req.header("Authorization", &format!("Bearer {}", api.key.trim()));
+    }
+    let resp = req.send(body.to_string())?;
+    let status = resp.status().as_u16();
+    let text = resp.into_body().read_to_string()?;
+    if status != 200 {
+        return Err(http_error(status, &text));
+    }
+    Ok(serde_json::from_str(&text)?)
+}
+
 /// Os modelos que o serviço oferece (`GET /models`).
 pub fn list_models(api: &Api) -> Result<Vec<String>> {
     let mut req = agent(30).get(&endpoint(api, "models"));
