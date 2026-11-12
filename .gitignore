@@ -7,6 +7,7 @@
 *.dmg
 
 # Dados de teste, se DISCITE_DATA apontar para dentro do projeto
+graphify-out/
 /data/
 *.db
 *.db-wal
