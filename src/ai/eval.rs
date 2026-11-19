@@ -98,6 +98,8 @@ fn eval_cards() {
                 notes: source.text.clone(),
                 max_tokens: count as usize * 220 + 200,
                 questions: false,
+                media: std::path::PathBuf::new(),
+                images: vec![],
             },
             || {},
         );

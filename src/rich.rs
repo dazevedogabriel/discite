@@ -37,7 +37,7 @@ impl Ink {
         }
     }
 
-    fn from_name(s: &str) -> Option<Ink> {
+    pub fn from_name(s: &str) -> Option<Ink> {
         Ink::ALL.into_iter().find(|i| i.name() == s)
     }
 }

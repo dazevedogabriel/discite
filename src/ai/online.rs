@@ -116,11 +116,19 @@ pub fn list_models(api: &Api) -> Result<Vec<String>> {
 
 /// Gera com a API, mandando cada cartão ou questão assim que o objeto fecha.
 #[allow(clippy::too_many_arguments)]
-pub fn run(api: &Api, chat: &Chat, shape: &str, ids: Vec<i64>, notes: &str, questions: bool, count: u32, cancel: &AtomicBool, send: &dyn Fn(Event)) -> Result<f32> {
+pub fn run(api: &Api, chat: &Chat, shape: &str, ids: Vec<i64>, notes: &str, questions: bool, count: u32, images: &[String], cancel: &AtomicBool, send: &dyn Fn(Event)) -> Result<f32> {
     send(Event::Loading);
     let start = Instant::now();
     // Sem a gramática da IA local, o formato vai por escrito no pedido.
-    let user = format!("{}\n\n{shape}", chat.user);
+    let text = format!("{}\n\n{shape}", chat.user);
+    // Com imagens, a mensagem vira partes: o texto e cada imagem (data URL), na ordem "(image N)".
+    let user = if images.is_empty() {
+        serde_json::json!(text)
+    } else {
+        let mut parts = vec![serde_json::json!({"type": "text", "text": text})];
+        parts.extend(images.iter().map(|u| serde_json::json!({"type": "image_url", "image_url": {"url": u}})));
+        serde_json::json!(parts)
+    };
     let mut body = serde_json::json!({
         "model": api.model.trim(),
         "messages": [{"role": "system", "content": chat.system}, {"role": "user", "content": user}],

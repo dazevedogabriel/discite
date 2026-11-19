@@ -9,6 +9,10 @@ mod assistant;
 mod browser;
 mod charts;
 mod dashboard;
+mod diagram;
+mod epub;
+mod export;
+mod pdf;
 mod logview;
 mod math;
 mod modals;
@@ -109,6 +113,8 @@ pub struct Settings {
     pub lang: Option<String>,
     /// No caderno a barra lateral fica recolhida (como no design) até o usuário abrir.
     pub notebook_sidebar_open: bool,
+    /// A coluna de páginas do caderno recolhida.
+    pub page_tree_hidden: bool,
     /// IA local: modelo escolhido, uso da GPU e o último pedido (quantos, que tipo).
     /// Id de um modelo da lista, "file:<caminho>" (um .gguf qualquer) ou "online".
     pub ai_model: String,
@@ -126,6 +132,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings { dark: true, rollover_hour: 4, sidebar_collapsed: false, auto_backup: true, last_backup: 0, reading_width: 640.0, answer_cap_secs: 60, last_deck: None, notebook_sidebar_open: false,
+            page_tree_hidden: false,
             lang: Some("en".into()),
             ai_model: crate::ai::models::DEFAULT_MODEL.into(),
             ai_gpu: true,
@@ -184,6 +191,9 @@ pub struct App {
     toasts: Vec<(String, bool, Instant)>,
     pub modal: Option<modals::Modal>,
     pub note_editor: Option<note_editor::NoteEditor>,
+    /// Painéis do caderno (cartão e IA) guardados enquanto se usa outra tela.
+    parked_note: Option<note_editor::NoteEditor>,
+    was_notebook: bool,
     pub question_editor: Option<questions::Editor>,
     pub quiz: Option<questions::Quiz>,
     pub questions: questions::State,
@@ -235,6 +245,8 @@ impl App {
             toasts: vec![],
             modal: None,
             note_editor: None,
+            parked_note: None,
+            was_notebook: false,
             question_editor: None,
             quiz: None,
             questions: Default::default(),
@@ -575,9 +587,36 @@ impl App {
         }
     }
 
-    /// Há uma janela por cima da tela (diálogo, editor de cartão, IA…).
+    /// Há uma janela por cima da tela (diálogo, editor de cartão, IA…). No
+    /// caderno, criar cartão e a IA ficam ao lado da página e não contam.
     pub fn overlay(&self) -> bool {
-        self.modal.is_some() || self.note_editor.is_some() || self.question_editor.is_some() || self.palette.is_some() || self.ai.review.is_some() || self.log_view.is_some()
+        let cards = (self.note_editor.is_some() || self.ai.review.is_some()) && !self.side_panel();
+        self.modal.is_some() || cards || self.question_editor.is_some() || self.palette.is_some() || self.log_view.is_some()
+    }
+
+    /// Os painéis de cartão e da IA são do caderno: ao sair dele ficam guardados
+    /// (não viram janela por cima da outra tela) e voltam com ele.
+    fn park_panels(&mut self) {
+        let notebook = matches!(self.screen, Screen::Subject(_, Tab::Notebook));
+        if notebook == self.was_notebook {
+            return;
+        }
+        self.was_notebook = notebook;
+        if !notebook {
+            if self.note_editor.is_some() {
+                self.parked_note = self.note_editor.take();
+            }
+        } else if self.note_editor.is_none() {
+            self.note_editor = self.parked_note.take();
+        }
+        ai::park(self, !notebook);
+    }
+
+    /// No caderno, com a janela larga, criar cartão e "Gerar com IA" abrem num
+    /// painel ao lado da página (não por cima dela, para dar para ler as notas).
+    pub fn side_panel(&self) -> bool {
+        // Sem olhar `page`: o editor da página a tira da `App` enquanto desenha.
+        matches!(self.screen, Screen::Subject(_, Tab::Notebook)) && self.window_w >= 1000.0
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
@@ -788,13 +827,8 @@ fn sidebar(app: &mut App, ui: &mut egui::Ui) {
         caps_sized(ui.painter(), pos2(x0, r.top() + g1.size().y + 8.0), Align2::LEFT_CENTER, &tr!("app.tagline", version = &VERSION[..3]), 9.5, p.dim);
         // « recolhe a barra (no caderno, só a do caderno; nas outras telas, a geral).
         let cr = Rect::from_min_size(pos2(r.right() - 30.0, r.top() + 2.0), vec2(30.0, 30.0));
-        let resp = ui.interact(cr, ui.scope_id().with("collapse_sidebar"), Sense::click());
-        if resp.hovered() {
-            ui.painter().rect_filled(cr, CornerRadius::same(8), p.hover);
-        }
-        text(ui.painter(), cr.center(), Align2::CENTER_CENTER, "«", serif(16.0, W::Regular), if resp.hovered() { p.text } else { p.dim }, 30.0);
-        a11y(&resp, egui::accesskit::Role::Button, &tr!("nav.collapse_sidebar"), None);
-        if resp.on_hover_text(keys(&tr!("nav.collapse_sidebar"))).on_hover_cursor(CursorIcon::PointingHand).clicked() {
+        let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(cr));
+        if panel_toggle(&mut cu, true, &tr!("nav.collapse_sidebar")).clicked() {
             app.set_sidebar(false);
         }
     }
@@ -951,6 +985,12 @@ fn sidebar_collapsed(app: &mut App, ui: &mut egui::Ui) {
     ui.spacing_mut().item_spacing.y = 6.0;
     let (r, _) = ui.allocate_exact_size(vec2(40.0, 36.0), Sense::hover());
     logo(ui, Rect::from_center_size(r.center() - vec2(0.0, 4.0), vec2(30.0, 30.0)));
+    // Restaurar fica no topo, à vista (antes ficava no pé da faixa).
+    if panel_toggle(ui, false, &tr!("nav.expand_sidebar")).clicked() {
+        app.set_sidebar(true);
+    }
+    let (r, _) = ui.allocate_exact_size(vec2(28.0, 9.0), Sense::hover());
+    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0, p.line));
     let scr = app.screen;
     for (num, key, target) in [("01", "nav.dashboard", Screen::Dashboard), ("02", "nav.stats", Screen::Stats), ("03", "nav.cards", Screen::Browser), ("04", "nav.assistant", Screen::Assistant)] {
         let label = &tr!(key);
@@ -985,13 +1025,6 @@ fn sidebar_collapsed(app: &mut App, ui: &mut egui::Ui) {
         if resp.on_hover_text(label).clicked() {
             app.open_subject(s.id);
         }
-    }
-    let rest = ui.available_height() - 36.0;
-    if rest > 0.0 {
-        ui.add_space(rest);
-    }
-    if icon_button(ui, "»", &tr!("nav.expand_sidebar"), 36.0).clicked() {
-        app.set_sidebar(true);
     }
 }
 
@@ -1055,6 +1088,7 @@ impl eframe::App for App {
             Screen::Assistant => assistant::ui(self, ui),
         });
 
+        self.park_panels();
         note_editor::show(self, &ctx);
         questions::show_editor(self, &ctx);
         ai::show(self, &ctx);

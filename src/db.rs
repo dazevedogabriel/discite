@@ -272,11 +272,12 @@ pub enum BlockKind {
     Table,
     Divider,
     Formula,
+    Diagram,
 }
 
 impl BlockKind {
     pub fn is_text(self) -> bool {
-        !matches!(self, BlockKind::Image | BlockKind::Table | BlockKind::Divider)
+        !matches!(self, BlockKind::Image | BlockKind::Table | BlockKind::Divider | BlockKind::Diagram)
     }
     pub fn is_list(self) -> bool {
         matches!(self, BlockKind::Bullet | BlockKind::Numbered | BlockKind::Check)
@@ -297,6 +298,7 @@ impl BlockKind {
             BlockKind::Table => "block.table",
             BlockKind::Divider => "block.divider",
             BlockKind::Formula => "block.formula",
+            BlockKind::Diagram => "block.diagram",
         })
     }
 }
@@ -318,6 +320,63 @@ pub struct Block {
     pub rows: Vec<Vec<String>>,
     /// Código: linguagem; destaque: "dica", "aviso", "info".
     pub lang: String,
+    /// Destaque: cor da etiqueta e do fundo (`Ink::name`); vazio = cor padrão.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub ink: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub fill: String,
+    /// Fluxograma / mapa mental.
+    #[serde(skip_serializing_if = "Diagram::is_empty")]
+    pub diagram: Diagram,
+}
+
+/// Caixas ligadas por setas. Posições em pixels, relativas ao canto do quadro.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Diagram {
+    pub nodes: Vec<DiagramNode>,
+    pub edges: Vec<DiagramEdge>,
+    /// Deslocamento da vista (pan), para reabrir onde estava.
+    pub pan_x: f32,
+    pub pan_y: f32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DiagramNode {
+    pub id: u32,
+    /// Centro da caixa.
+    pub x: f32,
+    pub y: f32,
+    pub text: String,
+    /// "" = retângulo, "pill" = arredondada, "diamond" = decisão.
+    pub shape: String,
+    /// `Ink::name`; vazio = cor padrão.
+    pub color: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct DiagramEdge {
+    pub from: u32,
+    pub to: u32,
+}
+
+impl Diagram {
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty() && self.edges.is_empty()
+    }
+
+    /// Texto corrido para busca e IA: cada ligação vira "A → B"; caixas soltas entram sozinhas.
+    pub fn plain(&self) -> String {
+        let name = |id: u32| self.nodes.iter().find(|n| n.id == id).map(|n| n.text.trim().replace('\n', " ")).unwrap_or_default();
+        let mut lines: Vec<String> = self.edges.iter().map(|e| format!("{} → {}", name(e.from), name(e.to))).collect();
+        for n in self.nodes.iter().filter(|n| !self.edges.iter().any(|e| e.from == n.id || e.to == n.id)) {
+            lines.push(n.text.trim().replace('\n', " "));
+        }
+        lines.retain(|l| !l.trim().is_empty());
+        lines.join("\n")
+    }
 }
 
 impl Block {
@@ -328,6 +387,7 @@ impl Block {
         match self.kind {
             BlockKind::Image => self.caption.clone(),
             BlockKind::Table => self.rows.iter().map(|r| r.join(" ")).collect::<Vec<_>>().join("\n"),
+            BlockKind::Diagram => self.diagram.plain(),
             BlockKind::Code | BlockKind::Formula => self.text.clone(),
             _ => crate::rich::plain(&self.text),
         }
@@ -1254,6 +1314,24 @@ impl Db {
         Ok(out)
     }
 
+    /// Contagens de hoje por (baralho, página de origem das notas): os
+    /// sub-baralhos automáticos da tela de baralhos. Ordenadas pelo título.
+    pub fn page_counts(&self, learn_until: i64, day_end: i64) -> Result<Vec<(i64, i64, String, Counts)>> {
+        let mut st = self.conn.prepare(
+            "SELECT c.deck_id, p.id, p.title,
+               SUM(CASE WHEN c.queue = 0 AND c.state = 0 THEN 1 ELSE 0 END),
+               SUM(CASE WHEN c.queue = 0 AND c.state IN (1, 3) AND c.due <= ?1 THEN 1 ELSE 0 END),
+               SUM(CASE WHEN c.queue = 0 AND c.state = 2 AND c.due < ?2 THEN 1 ELSE 0 END)
+             FROM cards c JOIN notes n ON n.id = c.note_id JOIN pages p ON p.id = n.source_page
+             GROUP BY c.deck_id, p.id ORDER BY p.title COLLATE NOCASE",
+        )?;
+        let rows = st.query_map(params![learn_until, day_end], |r| {
+            let n = |i| r.get::<_, i64>(i).map(|v| v as u32);
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, Counts { new: n(3)?, learn: n(4)?, review: n(5)? }))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// Novos introduzidos e revisões feitas hoje, por baralho.
     pub fn done_today(&self, day_start: i64) -> Result<HashMap<i64, (u32, u32)>> {
         let mut st = self.conn.prepare(
@@ -1437,6 +1515,24 @@ mod tests {
         assert_eq!(db.note(n.id).unwrap().unwrap().fields, note.fields);
         let back = db.note_cards(n.id).unwrap();
         assert_eq!((back[0].id, back[0].s.reps, back[0].s.lapses), (card.id, 7, 2));
+    }
+
+    #[test]
+    fn cards_are_counted_per_source_page() {
+        let db = temp_db();
+        let s = db.add_subject("Bio", 0).unwrap();
+        let deck = db.list_decks().unwrap().into_iter().find(|d| d.subject_id == s).unwrap().id;
+        let page = db.add_page(s, None, "Mitose").unwrap();
+        for src in [Some(page), Some(page), None] {
+            let mut n = Note::new(NoteKind::Basic);
+            n.fields = vec!["F".into(), "V".into(), String::new()];
+            n.source_page = src;
+            db.add_note(&mut n, deck).unwrap();
+        }
+        let got = db.page_counts(i64::MAX, i64::MAX).unwrap();
+        // Só a página aparece; a nota sem origem fica só no baralho.
+        assert_eq!(got.len(), 1);
+        assert_eq!((got[0].0, got[0].1, got[0].2.as_str(), got[0].3.new), (deck, page, "Mitose", 2));
     }
 
     #[test]

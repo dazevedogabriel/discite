@@ -154,8 +154,12 @@ pub fn subject_color(i: usize) -> Color32 {
 
 /// Cor de texto da marcação `{cor|…}`, escurecida no tema claro para ler bem.
 pub fn ink(i: crate::rich::Ink) -> Color32 {
+    ink_on(i, DARK.load(Ordering::Relaxed))
+}
+
+/// A cor num tema dado (a exportação usa sempre o claro).
+pub fn ink_on(i: crate::rich::Ink, dark: bool) -> Color32 {
     use crate::rich::Ink::*;
-    let dark = DARK.load(Ordering::Relaxed);
     hex(match (i, dark) {
         (Red, true) => 0xF2666A,
         (Orange, true) => 0xF0A63E,
@@ -176,8 +180,12 @@ pub fn ink(i: crate::rich::Ink) -> Color32 {
 
 /// Fundo do realce `{=cor|…}`: translúcido, para o texto continuar legível.
 pub fn ink_bg(i: crate::rich::Ink) -> Color32 {
+    ink_bg_on(i, DARK.load(Ordering::Relaxed))
+}
+
+pub fn ink_bg_on(i: crate::rich::Ink, dark: bool) -> Color32 {
     use crate::rich::Ink::*;
-    if DARK.load(Ordering::Relaxed) {
+    if dark {
         match i {
             Red => rgba(0xF2666A, 0.32),
             Orange => rgba(0xF0A63E, 0.30),
@@ -231,18 +239,36 @@ pub fn mono(size: f32) -> FontId {
     FontId::monospace(size)
 }
 
+/// Uma fonte embutida: nome no egui e como o CSS a declara (a exportação usa as mesmas).
+pub struct EmbeddedFont {
+    pub name: &'static str,
+    pub family: &'static str,
+    pub weight: u16,
+    pub italic: bool,
+    pub data: &'static [u8],
+}
+
+pub const FONTS: [EmbeddedFont; 8] = [
+    EmbeddedFont { name: "lit", family: "Literata", weight: 400, italic: false, data: include_bytes!("../../assets/fonts/Literata-Regular.ttf") },
+    EmbeddedFont { name: "lit-medium", family: "Literata", weight: 500, italic: false, data: include_bytes!("../../assets/fonts/Literata-Medium.ttf") },
+    EmbeddedFont { name: "lit-semi", family: "Literata", weight: 600, italic: false, data: include_bytes!("../../assets/fonts/Literata-SemiBold.ttf") },
+    EmbeddedFont { name: "lit-bold", family: "Literata", weight: 700, italic: false, data: include_bytes!("../../assets/fonts/Literata-Bold.ttf") },
+    EmbeddedFont { name: "lit-italic", family: "Literata", weight: 400, italic: true, data: include_bytes!("../../assets/fonts/Literata-Italic.ttf") },
+    EmbeddedFont { name: "lit-semi-italic", family: "Literata", weight: 600, italic: true, data: include_bytes!("../../assets/fonts/Literata-SemiBoldItalic.ttf") },
+    EmbeddedFont { name: "jb-mono", family: "JetBrains Mono", weight: 400, italic: false, data: include_bytes!("../../assets/fonts/JetBrainsMono-400.ttf") },
+    // Setas longas (⟶ do `-->`) e símbolos matemáticos em largura proporcional:
+    // na Hack eles ficam espremidos numa célula monoespaçada.
+    EmbeddedFont { name: "noto-math", family: "Noto Sans Math", weight: 400, italic: false, data: include_bytes!("../../assets/fonts/NotoSansMath-Regular.ttf") },
+];
+
 pub fn install_fonts(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
     let add = |fonts: &mut FontDefinitions, name: &str, data: &'static [u8]| {
         fonts.font_data.insert(name.into(), Arc::new(FontData::from_static(data)));
     };
-    add(&mut fonts, "lit", include_bytes!("../../assets/fonts/Literata-Regular.ttf"));
-    add(&mut fonts, "lit-medium", include_bytes!("../../assets/fonts/Literata-Medium.ttf"));
-    add(&mut fonts, "lit-semi", include_bytes!("../../assets/fonts/Literata-SemiBold.ttf"));
-    add(&mut fonts, "lit-bold", include_bytes!("../../assets/fonts/Literata-Bold.ttf"));
-    add(&mut fonts, "lit-italic", include_bytes!("../../assets/fonts/Literata-Italic.ttf"));
-    add(&mut fonts, "lit-semi-italic", include_bytes!("../../assets/fonts/Literata-SemiBoldItalic.ttf"));
-    add(&mut fonts, "jb-mono", include_bytes!("../../assets/fonts/JetBrainsMono-400.ttf"));
+    for f in FONTS {
+        add(&mut fonts, f.name, f.data);
+    }
 
     // As fontes do egui ficam de reserva para símbolos (▾ › ◐ ⇧ ∑…). A Hack (a
     // monoespaçada do egui) cobre setas e formas geométricas; sem ela esses
@@ -251,6 +277,9 @@ pub fn install_fonts(ctx: &egui::Context) {
     if !fallback.iter().any(|f| f == "Hack") {
         fallback.push("Hack".to_owned());
     }
+    // Antes da Hack, para as setas e símbolos virem dela.
+    let at = fallback.iter().position(|f| f == "Hack").unwrap_or(fallback.len());
+    fallback.insert(at, "noto-math".to_owned());
     let family = |first: &str| {
         let mut v = vec![first.to_owned()];
         v.extend(fallback.iter().cloned());

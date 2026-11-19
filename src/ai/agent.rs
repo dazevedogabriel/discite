@@ -78,6 +78,8 @@ pub struct Context {
 
 pub struct Request {
     pub api: Api,
+    /// Modelo local (arquivo .gguf e se usa a GPU); `None` = IA online.
+    pub local: Option<(PathBuf, bool)>,
     pub root: PathBuf,
     /// Mensagens anteriores da conversa (sem a de sistema).
     pub history: Vec<Value>,
@@ -472,7 +474,7 @@ fn wait(rx: &Receiver<Reply>, cancel: &AtomicBool) -> Result<Reply> {
 }
 
 /// Base64 padrão, para mandar imagens no pedido.
-fn base64(bytes: &[u8]) -> String {
+pub(crate) fn base64(bytes: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for c in bytes.chunks(3) {
@@ -485,7 +487,7 @@ fn base64(bytes: &[u8]) -> String {
 }
 
 /// A imagem `media/arquivo` como data URL JPEG, reduzida se for grande.
-fn image_url(media: &Path, name: &str) -> Result<String> {
+pub(crate) fn image_url(media: &Path, name: &str) -> Result<String> {
     let mut img = image::open(media.join(name))?;
     if img.width().max(img.height()) > MAX_IMAGE_SIDE {
         img = img.thumbnail(MAX_IMAGE_SIDE, MAX_IMAGE_SIDE);
@@ -516,6 +518,114 @@ fn has_image(messages: &[Value]) -> bool {
     messages.iter().any(|m| m["content"].as_array().is_some_and(|a| a.iter().any(|p| p["type"] == "image_url")))
 }
 
+// ── IA local: o formato de ferramentas dos Qwen (Hermes), à mão ──
+//
+// O llama.cpp embutido não traz o motor de templates com ferramentas, então o
+// prompt é montado aqui e os `<tool_call>` da resposta viram `tool_calls` no
+// formato da API online: o resto do laço não sabe qual IA respondeu.
+
+/// Texto de uma mensagem: imagens viram um aviso (o modelo local não as vê).
+fn plain_content(content: &Value) -> String {
+    match content {
+        Value::String(s) => s.clone(),
+        Value::Array(parts) => parts
+            .iter()
+            .map(|p| if p["type"] == "text" { p["text"].as_str().unwrap_or_default().to_owned() } else { "[image omitted: the local model cannot see images]".to_owned() })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+/// A conversa no formato ChatML com ferramentas que os Qwen aprenderam.
+fn hermes_prompt(messages: &[Value], tools: &Value) -> String {
+    let mut out = String::new();
+    let mut i = 0;
+    while i < messages.len() {
+        let m = &messages[i];
+        match m["role"].as_str().unwrap_or_default() {
+            "system" => {
+                out.push_str("<|im_start|>system\n");
+                out.push_str(&plain_content(&m["content"]));
+                out.push_str("\n\n# Tools\n\nYou may call one or more functions to assist with the user query.\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>");
+                for t in tools.as_array().into_iter().flatten() {
+                    out.push('\n');
+                    out.push_str(&t.to_string());
+                }
+                out.push_str("\n</tools>\n\nFor each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call><|im_end|>\n");
+            }
+            "assistant" => {
+                out.push_str("<|im_start|>assistant\n");
+                out.push_str(m["content"].as_str().unwrap_or_default());
+                for c in m["tool_calls"].as_array().into_iter().flatten() {
+                    let f = &c["function"];
+                    let args: Value = f["arguments"].as_str().and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| f["arguments"].clone());
+                    out.push_str(&format!("\n<tool_call>\n{}\n</tool_call>", json!({"name": f["name"], "arguments": args})));
+                }
+                out.push_str("<|im_end|>\n");
+            }
+            "tool" => {
+                // Resultados seguidos vão juntos numa mensagem só, como no template do Qwen.
+                out.push_str("<|im_start|>user");
+                while i < messages.len() && messages[i]["role"] == "tool" {
+                    out.push_str(&format!("\n<tool_response>\n{}\n</tool_response>", plain_content(&messages[i]["content"])));
+                    i += 1;
+                }
+                out.push_str("<|im_end|>\n");
+                continue;
+            }
+            _ => {
+                out.push_str("<|im_start|>user\n");
+                out.push_str(&plain_content(&m["content"]));
+                out.push_str("<|im_end|>\n");
+            }
+        }
+        i += 1;
+    }
+    out.push_str("<|im_start|>assistant\n");
+    out
+}
+
+/// Resposta do modelo local no formato da API online: texto e `tool_calls`.
+fn parse_hermes(text: &str, step: usize) -> Value {
+    let mut rest = text.to_owned();
+    // Qwen3 com raciocínio pensa entre <think>…</think>: isso não vai para o usuário.
+    while let (Some(a), Some(b)) = (rest.find("<think>"), rest.find("</think>")) {
+        if b < a {
+            break;
+        }
+        rest.replace_range(a..b + "</think>".len(), "");
+    }
+    let mut calls = vec![];
+    while let Some(a) = rest.find("<tool_call>") {
+        let end = rest[a..].find("</tool_call>").map(|e| a + e);
+        let body = rest[a + "<tool_call>".len()..end.unwrap_or(rest.len())].trim().to_owned();
+        if let Ok(v) = serde_json::from_str::<Value>(&body) {
+            let args = if v["arguments"].is_string() { v["arguments"].as_str().unwrap_or("{}").to_owned() } else { v["arguments"].to_string() };
+            calls.push(json!({"id": format!("call_{step}_{}", calls.len()), "type": "function", "function": {"name": v["name"], "arguments": args}}));
+        }
+        rest.replace_range(a..end.map_or(rest.len(), |e| e + "</tool_call>".len()), "");
+    }
+    let mut msg = json!({"role": "assistant", "content": rest.trim()});
+    if !calls.is_empty() {
+        msg["tool_calls"] = json!(calls);
+    }
+    json!({"choices": [{"message": msg}]})
+}
+
+fn local_turn(model: &Path, gpu: bool, messages: &[Value], cancel: &AtomicBool) -> Result<Value> {
+    // Qwen3 híbrido pensa antes de responder por padrão: `/no_think` responde direto (bem mais rápido).
+    let mut messages = messages.to_vec();
+    if let Some(sys) = messages.first_mut().filter(|m| m["role"] == "system") {
+        sys["content"] = json!(format!("{}\n/no_think", plain_content(&sys["content"])));
+    }
+    let prompt = hermes_prompt(&messages, &tools());
+    let r = super::engine::chat(super::engine::ChatRequest { model: model.to_owned(), gpu, prompt, max_tokens: 3000 }, cancel)?;
+    let mut resp = parse_hermes(&r.text, messages.len());
+    resp["usage"] = json!({"prompt_tokens": r.prompt_tokens, "completion_tokens": r.out_tokens, "total_tokens": r.prompt_tokens + r.out_tokens});
+    Ok(resp)
+}
+
 fn run(req: &Request, db: &Db, cancel: &AtomicBool, send: &dyn Fn(Event)) -> Result<()> {
     let mut system = SYSTEM.to_owned();
     if let Some(c) = &req.context {
@@ -533,8 +643,13 @@ fn run(req: &Request, db: &Db, cancel: &AtomicBool, send: &dyn Fn(Event)) -> Res
         if cancel.load(Ordering::Relaxed) {
             bail!("cancelled");
         }
-        let body = json!({"model": req.api.model.trim(), "messages": with_images(&messages, &db.media_dir(), &mut cache)?, "tools": tools(), "temperature": 0.3});
-        let resp = online::post_json(&req.api, "chat/completions", &body)?;
+        let resp = match &req.local {
+            Some((model, gpu)) => local_turn(model, *gpu, &messages, cancel)?,
+            None => {
+                let body = json!({"model": req.api.model.trim(), "messages": with_images(&messages, &db.media_dir(), &mut cache)?, "tools": tools(), "temperature": 0.3});
+                online::post_json(&req.api, "chat/completions", &body)?
+            }
+        };
         if let Some(n) = resp.pointer("/usage/total_tokens").and_then(Value::as_u64) {
             send(Event::Usage(n));
             crate::diag::info(format!("assistant usage: {}", resp["usage"]));
@@ -656,7 +771,7 @@ mod tests {
     }
 
     fn request(url: String, dir: &Path, user: &str) -> Request {
-        Request { api: Api { url, model: "m".into(), ..Default::default() }, root: dir.to_owned(), history: vec![], user: json!(user), context: None, clock: Clock { rollover_hour: 4 } }
+        Request { api: Api { url, model: "m".into(), ..Default::default() }, local: None, root: dir.to_owned(), history: vec![], user: json!(user), context: None, clock: Clock { rollover_hour: 4 } }
     }
 
     #[test]
@@ -742,6 +857,32 @@ mod tests {
         assert!(seen[1]["messages"].as_array().unwrap().last().unwrap()["content"].as_str().unwrap().starts_with("Nothing was saved"));
         // O segundo lote no mesmo pedido é recusado sem perguntar ao usuário.
         assert!(seen[3]["messages"].as_array().unwrap().last().unwrap()["content"].as_str().unwrap().contains("already created"));
+    }
+
+    /// O prompt local leva as ferramentas e os resultados no formato do Qwen, e a
+    /// resposta com <tool_call> volta como `tool_calls` da API online.
+    #[test]
+    fn local_model_speaks_the_qwen_tool_format() {
+        let messages = vec![
+            json!({"role": "system", "content": "Be brief."}),
+            json!({"role": "user", "content": [{"type": "text", "text": "Resuma"}, {"type": "image_url", "image_url": {"url": "media:x.png"}}]}),
+            json!({"role": "assistant", "content": "", "tool_calls": [{"id": "a", "type": "function", "function": {"name": "read_page", "arguments": "{\"page_id\":7}"}}]}),
+            json!({"role": "tool", "tool_call_id": "a", "content": "Mitose: fases"}),
+        ];
+        let p = hermes_prompt(&messages, &tools());
+        assert!(p.starts_with("<|im_start|>system\nBe brief.\n\n# Tools"), "{p}");
+        assert!(p.contains("\"name\":\"read_page\""));
+        assert!(p.contains("[image omitted"));
+        assert!(p.contains("<tool_call>\n{\"arguments\":{\"page_id\":7},\"name\":\"read_page\"}\n</tool_call><|im_end|>"), "{p}");
+        assert!(p.contains("<|im_start|>user\n<tool_response>\nMitose: fases\n</tool_response><|im_end|>"));
+        assert!(p.ends_with("<|im_start|>assistant\n"));
+
+        let r = parse_hermes("<think>hmm</think>Vou ler.\n<tool_call>\n{\"name\": \"read_page\", \"arguments\": {\"page_id\": 7}}\n</tool_call>", 3);
+        let m = &r["choices"][0]["message"];
+        assert_eq!(m["content"], "Vou ler.");
+        assert_eq!(m["tool_calls"][0]["function"]["name"], "read_page");
+        assert_eq!(m["tool_calls"][0]["function"]["arguments"], "{\"page_id\":7}");
+        assert_eq!(parse_hermes("Só texto.", 1)["choices"][0]["message"]["tool_calls"], Value::Null);
     }
 
     #[test]

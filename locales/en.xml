@@ -208,6 +208,7 @@
   <string key="deck.custom_study">Custom study…</string>
   <string key="deck.add_note_here">Add note here</string>
   <string key="deck.view_cards">View cards</string>
+  <string key="deck.open_page">Open page</string>
   <string key="deck.new_subdeck">New subdeck…</string>
   <string key="deck.preset_options">Preset options…</string>
   <string key="deck.use_preset">Use preset</string>
@@ -219,6 +220,8 @@
   <string key="page.empty_text">Write notes in pages and subpages. Images can be pasted straight in (Ctrl+V).</string>
   <string key="page.new_page">New page</string>
   <string key="page.notebook">Notebook</string>
+  <string key="page.hide_tree">Collapse the page list</string>
+  <string key="page.show_tree">Show the page list</string>
   <string key="page.more_options">More notebook options</string>
   <string key="page.page_options">Page options</string>
   <string key="page.import_markdown">Import Markdown…</string>
@@ -230,6 +233,10 @@
   <string key="page.move_to_subject">Move to subject</string>
   <string key="page.delete">Delete page…</string>
   <string key="page.export">Export</string>
+  <string key="export.pdf">PDF (page look)</string>
+  <string key="export.html">HTML (page look)</string>
+  <string key="export.epub">EPUB (e-book)</string>
+  <string key="export.markdown">Markdown</string>
   <string key="page.history">History</string>
   <string key="page.focus">Focus</string>
   <string key="page.exit_focus">Exit focus</string>
@@ -270,6 +277,7 @@
   <string key="page.code">Code</string>
   <string key="page.formula_label">∑ Formula · LaTeX</string>
   <string key="page.tip">Tip</string>
+  <string key="page.tip_color">Tip color (label and background)</string>
   <string key="page.slash_hint">Type '/' for commands</string>
   <string key="page.blocks">Blocks</string>
   <string key="page.insert_below">Insert block below</string>
@@ -321,6 +329,17 @@
   <string key="block.table">Table</string>
   <string key="block.divider">Divider</string>
   <string key="block.formula">Formula (LaTeX)</string>
+  <string key="block.diagram">Flowchart</string>
+  <string key="page.diagram">Flowchart</string>
+  <string key="diagram.rect">Rectangle</string>
+  <string key="diagram.pill">Rounded</string>
+  <string key="diagram.diamond">Diamond (decision)</string>
+  <string key="diagram.edit">Edit text</string>
+  <string key="diagram.delete">Delete box</string>
+  <string key="diagram.hint_text">Text</string>
+  <string key="diagram.empty">Double-click to create a box</string>
+  <string key="diagram.keys">Double-click creates · drag ● to link · Ctrl+click or drag selects · Space+drag pans</string>
+  <string key="diagram.fit">Fit everything</string>
 
   <!-- Review session -->
   <string key="review.all_subjects">All subjects</string>
@@ -880,6 +899,8 @@
   <string key="ai.generate">Generate</string>
   <string key="ai.generate_more">Generate more</string>
   <string key="ai.truncated">This page is long: only its beginning was sent to the AI. Select a passage to get cards about the rest.</string>
+  <string key="ai.images_ignored">The local AI can't see images: only the captions of the image blocks were used. To use the images, pick an online AI that sees them (such as Gemini).</string>
+  <string key="ai.from_image">Taken from an image: it can't be checked against the text of your notes. Review it before adding.</string>
   <string key="ai.status_need_model">Download a model to start</string>
   <string key="ai.status_ready">Choose what to generate and how many, then Generate</string>
   <string key="ai.empty_ready">Pick cards or multiple-choice questions above, and how many, then click Generate. Nothing is created until you add the suggestions you want.</string>
@@ -1049,7 +1070,8 @@
   <string key="assistant.perm_read">read notes and cards: free</string>
   <string key="assistant.empty_title">Ask your notes</string>
   <string key="assistant.empty_text">The assistant searches and reads your pages to answer, and says where each thing came from. It uses the online AI chosen in Settings.</string>
-  <string key="assistant.no_model">Online AI not set up</string>
+  <string key="assistant.no_model">AI not set up</string>
+  <string key="assistant.local_model">{name} · local</string>
   <string key="assistant.model_tip">Change the model in Settings</string>
   <string key="assistant.placeholder">Ask, paste a photo (Ctrl V) or request cards…</string>
   <string key="assistant.placeholder_short">Ask or request cards…</string>
@@ -1063,7 +1085,7 @@
   <string key="assistant.open_page">Open as a page</string>
   <string key="assistant.delete_chat">Delete chat</string>
   <string key="assistant.open_failed">Could not open that chat.</string>
-  <string key="assistant.need_online">Choose an online AI in Settings → Advanced AI to use the assistant.</string>
+  <string key="assistant.need_online">Choose an AI in Settings (online, or a downloaded local model) to use the assistant.</string>
   <string key="assistant.tool_search">Search notes</string>
   <string key="assistant.tool_read">Read page</string>
   <plural key="assistant.n_pages"><one>{n} page found</one><other>{n} pages found</other></plural>

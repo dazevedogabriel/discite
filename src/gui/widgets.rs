@@ -463,6 +463,26 @@ pub fn icon_button(ui: &mut Ui, glyph: &str, label: &str, size: f32) -> Response
     resp.on_hover_text(keys(label)).on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
+/// Botão de recolher/mostrar um painel lateral: o ícone de janela com a coluna
+/// da esquerda (cheia quando o painel está aberto), com moldura para ser fácil de achar.
+pub fn panel_toggle(ui: &mut Ui, open: bool, label: &str) -> Response {
+    let p = pal();
+    let (rect, resp) = ui.allocate_exact_size(vec2(30.0, 30.0), Sense::click());
+    let hot = resp.hovered();
+    ui.painter().rect(rect, CornerRadius::same(7), if hot { p.hover } else { Color32::TRANSPARENT }, Stroke::new(1.0, if hot { p.border_strong } else { p.border }), StrokeKind::Inside);
+    let col = if hot { p.text } else { p.text2 };
+    let icon = Rect::from_center_size(rect.center(), vec2(16.0, 13.0));
+    ui.painter().rect_stroke(icon, CornerRadius::same(2), Stroke::new(1.3, col), StrokeKind::Inside);
+    let side = Rect::from_min_max(icon.min, pos2(icon.left() + 5.5, icon.bottom()));
+    if open {
+        ui.painter().rect_filled(side, CornerRadius { nw: 2, sw: 2, ne: 0, se: 0 }, col);
+    } else {
+        ui.painter().vline(side.right(), icon.y_range(), Stroke::new(1.3, col));
+    }
+    a11y(&resp, egui::accesskit::Role::Button, label, Some(open));
+    resp.on_hover_text(keys(label)).on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 /// Barra de progresso fina.
 pub fn progress(painter: &egui::Painter, rect: Rect, frac: f32, color: Color32) {
     let p = pal();

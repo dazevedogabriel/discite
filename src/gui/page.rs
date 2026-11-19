@@ -5,7 +5,7 @@
 //! Cada bloco de texto é um `TextEdit` próprio. Enter divide o bloco,
 //! Backspace no início junta com o anterior, ↑/↓ nas bordas trocam de bloco,
 //! Tab recua listas, "/" abre o menu de blocos e `# `, `- `, `1. `, `[] `,
-//! `> `, ```` ``` ```` e `---` viram o bloco correspondente.
+//! `> `, ```` ``` ```` e `---` viram o bloco correspondente; `-->` vira ⟶.
 
 use super::math;
 use super::richtext::{self, Look};
@@ -100,7 +100,7 @@ enum Action {
     Viewer(String),
 }
 
-const SLASH: [BlockKind; 14] = [
+const SLASH: [BlockKind; 15] = [
     BlockKind::Paragraph,
     BlockKind::H1,
     BlockKind::H2,
@@ -114,6 +114,7 @@ const SLASH: [BlockKind; 14] = [
     BlockKind::Formula,
     BlockKind::Image,
     BlockKind::Table,
+    BlockKind::Diagram,
     BlockKind::Divider,
 ];
 
@@ -345,25 +346,79 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64) {
     let full = ui.max_rect();
     let focus_mode = app.page.as_ref().is_some_and(|e| e.focus_mode);
     // Janela estreita (metade da tela): a árvore de páginas afina.
-    let tree_w = if focus_mode { 0.0 } else if full.width() < 760.0 { 176.0 } else { 214.0 };
+    let tree_hidden = app.cfg.page_tree_hidden;
+    let tree_w = if focus_mode {
+        0.0
+    } else if tree_hidden {
+        // Recolhida: uma faixa fina com o botão de restaurar à vista.
+        46.0
+    } else if full.width() < 760.0 {
+        176.0
+    } else {
+        214.0
+    };
     // O painel do assistente (Ctrl+J) toma o lugar da lateral da página.
-    let assistant = app.assistant.panel && !focus_mode && full.width() >= 760.0;
-    let aside_w = if assistant { 340.0 } else if focus_mode || full.width() < 1000.0 { 0.0 } else { 248.0 };
+    // Criar cartão e "Gerar com IA" abrem ao lado da página, por cima de tudo o mais.
+    let card_panel = app.side_panel() && (app.note_editor.is_some() || app.ai.review.is_some());
+    let assistant = !card_panel && app.assistant.panel && !focus_mode && full.width() >= 760.0;
+    let aside_w = if card_panel {
+        (full.width() * 0.42).clamp(400.0, 540.0)
+    } else if assistant {
+        340.0
+    } else if focus_mode || full.width() < 1000.0 {
+        0.0
+    } else {
+        248.0
+    };
     if tree_w > 0.0 {
         let tree = Rect::from_min_size(full.min, vec2(tree_w, full.height()));
         let mut tu = ui.new_child(egui::UiBuilder::new().max_rect(tree));
-        page_tree(app, &mut tu, sid, tree);
+        if tree_hidden {
+            tu.painter().vline(tree.right() - 0.5, tree.y_range(), Stroke::new(1.0, p.line));
+            // A faixa toda (com "CADERNO" na vertical) reabre a lista: não se confunde
+            // com o botão da barra principal, logo ao lado.
+            let strip = Rect::from_min_max(tree.min + vec2(0.0, 52.0), pos2(tree.right() - 1.0, tree.top() + 200.0));
+            let sresp = tu.interact(strip, tu.scope_id().with("tree_strip"), Sense::click());
+            if sresp.hovered() {
+                tu.painter().rect_filled(strip.shrink2(vec2(6.0, 0.0)), CornerRadius::same(7), p.hover);
+            }
+            let g = tu.painter().layout_no_wrap(tr!("page.notebook").to_uppercase(), mono(10.0), if sresp.hovered() { p.text } else { p.dim });
+            let at = pos2(strip.center().x + g.size().y / 2.0, strip.top() + 12.0);
+            tu.painter().add(egui::epaint::TextShape::new(at, g, p.dim).with_angle(std::f32::consts::FRAC_PI_2));
+            let mut bu = tu.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(tree.min + vec2(8.0, 14.0), vec2(30.0, 30.0))));
+            let bresp = panel_toggle(&mut bu, false, &tr!("page.show_tree"));
+            if bresp.clicked() || sresp.on_hover_text(tr!("page.show_tree")).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                app.cfg.page_tree_hidden = false;
+                app.save_settings();
+            }
+        } else {
+            page_tree(app, &mut tu, sid, tree);
+        }
     }
     let main = Rect::from_min_max(pos2(full.left() + tree_w, full.top()), pos2(full.right() - aside_w, full.bottom()));
     let mut mu = ui.new_child(egui::UiBuilder::new().max_rect(main));
-    if app.page.as_ref().is_none_or(|e| e.meta.subject_id != sid) {
+    let no_page = app.page.as_ref().is_none_or(|e| e.meta.subject_id != sid);
+    if no_page {
         empty_notebook(app, &mut mu, main, sid);
+    } else {
+        if let Some(ed) = app.page.as_mut() {
+            ed.aside_shown = aside_w > 0.0 && !assistant && !card_panel;
+        }
+        editor(app, &mut mu, main, sid);
+    }
+    if card_panel {
+        let rect = Rect::from_min_max(pos2(full.right() - aside_w, full.top()), full.max);
+        let mut cu = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+        if app.note_editor.is_some() {
+            super::note_editor::panel(app, &mut cu, rect);
+        } else {
+            super::ai::panel(app, &mut cu, rect);
+        }
         return;
     }
-    if let Some(ed) = app.page.as_mut() {
-        ed.aside_shown = aside_w > 0.0 && !assistant;
+    if no_page {
+        return;
     }
-    editor(app, &mut mu, main, sid);
     if assistant {
         let rect = Rect::from_min_max(pos2(full.right() - aside_w, full.top()), full.max);
         let mut au = ui.new_child(egui::UiBuilder::new().max_rect(rect));
@@ -410,6 +465,10 @@ fn page_tree(app: &mut App, ui: &mut Ui, sid: i64, rect: Rect) {
     let head = Rect::from_min_size(inner.min, vec2(inner.width(), 28.0));
     caps(ui.painter(), pos2(head.left() + 8.0, head.center().y), Align2::LEFT_CENTER, &tr!("page.notebook"), p.dim);
     let mut hu = ui.new_child(egui::UiBuilder::new().max_rect(head).layout(egui::Layout::right_to_left(egui::Align::Center)));
+    if panel_toggle(&mut hu, true, &tr!("page.hide_tree")).clicked() {
+        app.cfg.page_tree_hidden = true;
+        app.save_settings();
+    }
     let more = icon_button(&mut hu, "⋯", &tr!("page.more_options"), 24.0);
     egui::Popup::menu(&more).frame(popup_frame()).width(220.0).show(|ui| {
         if menu_item(ui, &tr!("page.import_markdown"), false).clicked() {
@@ -606,23 +665,7 @@ fn editor(app: &mut App, ui: &mut Ui, rect: Rect, sid: i64) {
                     return;
                 }
                 let n = ed.blocks.len();
-                let mut numbering = Vec::with_capacity(n);
-                let mut counters = [0u32; 8];
-                for b in &ed.blocks {
-                    if b.kind == BlockKind::Numbered {
-                        let lvl = b.indent.min(7) as usize;
-                        counters[lvl] += 1;
-                        for c in counters.iter_mut().skip(lvl + 1) {
-                            *c = 0;
-                        }
-                        numbering.push(counters[lvl]);
-                    } else {
-                        if !b.kind.is_list() {
-                            counters = [0; 8];
-                        }
-                        numbering.push(0);
-                    }
-                }
+                let numbering = numbering(&ed.blocks);
                 for i in 0..n {
                     let bg = ui.painter().add(egui::Shape::Noop);
                     let r = block_ui(app, &mut ed, ui, i, col_w, numbering[i], &mut actions);
@@ -876,10 +919,25 @@ fn page_controls(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, act
             ed.snapshot(&app.db);
             app.modal = Some(super::modals::Modal::Versions(ed.meta.id));
         }
-        if menu_item(ui, &tr!("page.export"), false).clicked() {
-            ed.flush(&app.db);
-            export_markdown(app, ed);
-        }
+        ui.menu_button(tr!("page.export"), |ui| {
+            ui.set_max_width(220.0);
+            if menu_item(ui, &tr!("export.pdf"), false).clicked() {
+                ed.flush(&app.db);
+                export_visual(app, ed, ui.ctx(), "pdf");
+            }
+            if menu_item(ui, &tr!("export.html"), false).clicked() {
+                ed.flush(&app.db);
+                export_visual(app, ed, ui.ctx(), "html");
+            }
+            if menu_item(ui, &tr!("export.epub"), false).clicked() {
+                ed.flush(&app.db);
+                export_visual(app, ed, ui.ctx(), "epub");
+            }
+            if menu_item(ui, &tr!("export.markdown"), false).clicked() {
+                ed.flush(&app.db);
+                export_markdown(app, ed);
+            }
+        });
         if !ed.aside_shown {
             menu_sep(ui);
             if !card_button && menu_item_ex(ui, &tr!("page.create_flashcard"), None, false, Some(&keys("Ctrl ⇧ F"))).clicked() {
@@ -989,7 +1047,7 @@ fn toolbar(ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: &mut Vec<Action
     sep(&mut tu);
     let at = fidx.unwrap_or(ed.blocks.len().saturating_sub(1));
     if show_insert {
-        for (key, k) in [("page.image", BlockKind::Image), ("page.table", BlockKind::Table), ("page.formula", BlockKind::Formula)] {
+        for (key, k) in [("page.image", BlockKind::Image), ("page.table", BlockKind::Table), ("page.diagram", BlockKind::Diagram), ("page.formula", BlockKind::Formula)] {
             if button(&mut tu, &tr!(key), Btn::Ghost, 30.0).clicked() {
                 actions.push(Action::InsertAfter(at, k));
             }
@@ -1017,7 +1075,7 @@ fn toolbar(ed: &mut PageEditor, ui: &mut Ui, bar: Rect, actions: &mut Vec<Action
             menu_sep(ui);
         }
         caps_label(ui, &tr!("page.insert"));
-        let extra: &[BlockKind] = if show_insert { &[] } else { &[BlockKind::Image, BlockKind::Table, BlockKind::Formula] };
+        let extra: &[BlockKind] = if show_insert { &[] } else { &[BlockKind::Image, BlockKind::Table, BlockKind::Diagram, BlockKind::Formula] };
         for k in extra.iter().copied().chain([BlockKind::Callout, BlockKind::Code, BlockKind::Divider, BlockKind::H1, BlockKind::H2, BlockKind::H3]) {
             if menu_item(ui, &k.label(), false).clicked() {
                 actions.push(Action::InsertAfter(at, k));
@@ -1196,6 +1254,12 @@ fn block_ui(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, i: usize, w: f32, n
         BlockKind::Table => {
             changed |= table_block(ed, ui, i, w);
         }
+        BlockKind::Diagram => {
+            changed |= super::diagram::show(ui, id, &mut ed.blocks[i].diagram, w);
+            if changed {
+                ed.focus = Some(id);
+            }
+        }
         BlockKind::Formula => {
             // Fora da edição, a fórmula desenhada; clicar volta ao LaTeX, com a prévia embaixo.
             let editing = has_focus || ed.pending.is_some_and(|(pid, ..)| pid == id) || ed.blocks[i].text.trim().is_empty();
@@ -1239,8 +1303,11 @@ fn block_ui(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, i: usize, w: f32, n
             let look = look_of(kind);
             let marker_w = if kind.is_list() { 24.0 } else { 0.0 };
             let inner_w = w - indent - marker_w;
+            // Cores escolhidas no menu da etiqueta; sem escolha, o destaque padrão.
+            let label_ink = crate::rich::Ink::from_name(&ed.blocks[i].ink).map_or(p.accent, ink);
+            let (fill, edge) = crate::rich::Ink::from_name(&ed.blocks[i].fill).map_or((p.accent_tint, p.border), |k| (soft(ink(k), 0.14), soft(ink(k), 0.35)));
             let frame = match kind {
-                BlockKind::Callout => egui::Frame::NONE.fill(p.accent_tint).stroke(Stroke::new(1.0, p.border)).corner_radius(10).inner_margin(egui::Margin { left: 14, right: 14, top: 12, bottom: 12 }),
+                BlockKind::Callout => egui::Frame::NONE.fill(fill).stroke(Stroke::new(1.0, edge)).corner_radius(10).inner_margin(egui::Margin { left: 14, right: 14, top: 12, bottom: 12 }),
                 BlockKind::Quote => egui::Frame::NONE.inner_margin(egui::Margin { left: 18, right: 0, top: 2, bottom: 2 }),
                 _ => egui::Frame::NONE,
             };
@@ -1261,8 +1328,23 @@ fn block_ui(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, i: usize, w: f32, n
                     }
                     let ew = match kind {
                         BlockKind::Callout => {
-                            let (r, _) = ui.allocate_exact_size(vec2(52.0, 22.0), Sense::hover());
-                            caps(ui.painter(), pos2(r.left(), r.top() + 13.0), Align2::LEFT_CENTER, &tr!("page.tip"), p.accent);
+                            // A etiqueta abre o mesmo menu de cores do texto: letra = etiqueta, realce = fundo.
+                            let (r, resp) = ui.allocate_exact_size(vec2(52.0, 22.0), Sense::click());
+                            let lr = caps(ui.painter(), pos2(r.left(), r.top() + 13.0), Align2::LEFT_CENTER, &tr!("page.tip"), label_ink);
+                            if resp.hovered() {
+                                ui.painter().hline(lr.x_range(), lr.bottom() + 2.0, Stroke::new(1.0, soft(label_ink, 0.6)));
+                            }
+                            let resp = resp.on_hover_text(tr!("page.tip_color")).on_hover_cursor(egui::CursorIcon::PointingHand);
+                            a11y(&resp, egui::accesskit::Role::Button, &tr!("page.tip_color"), None);
+                            if let Some((bg, k)) = color_menu(&resp) {
+                                let name = k.map(|k| k.name().to_owned()).unwrap_or_default();
+                                if bg {
+                                    ed.blocks[i].fill = name;
+                                } else {
+                                    ed.blocks[i].ink = name;
+                                }
+                                changed = true;
+                            }
                             inner_w - 28.0 - 52.0
                         }
                         BlockKind::Quote => inner_w - 18.0,
@@ -1355,6 +1437,9 @@ fn block_ui(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, i: usize, w: f32, n
 
     if changed {
         ed.touch();
+        if let Some(c) = text_resp.as_ref().and_then(|o| o.cursor_range).map(|r| r.primary.index.0) {
+            ligature(ed, i, c);
+        }
         markdown_shortcuts(ed, i);
         // Menu "/".
         let b = &ed.blocks[i];
@@ -1474,6 +1559,53 @@ fn handle_keys(ed: &mut PageEditor, ctx: &egui::Context, i: usize, eid: Id, acti
             ed.touch();
         }
     }
+}
+
+/// Sequências digitadas que viram um caractere, como no Google Docs. A troca
+/// acontece a cada tecla, então as longas se montam a partir das já trocadas:
+/// `--` vira —, e `—>` (o `-->` digitado) vira ⟶. A ordem importa: as mais
+/// longas primeiro.
+const LIGATURES: [(&str, &str); 16] = [
+    ("←-", "⟵"),  // <--
+    ("⟵>", "⟷"),  // <-->
+    ("←>", "↔"),  // <->
+    ("—>", "⟶"),  // -->
+    ("—-", "---"), // --- continua sendo o atalho do divisor
+    ("--", "—"),
+    ("->", "→"),
+    ("<-", "←"),
+    ("≤>", "⇔"),  // <=>
+    ("<=", "≤"),
+    (">=", "≥"),
+    ("!=", "≠"),
+    ("=>", "⇒"),
+    ("~=", "≈"),
+    ("+-", "±"),
+    ("-+", "∓"),
+];
+
+fn ligature(ed: &mut PageEditor, i: usize, cursor: usize) {
+    let b = &mut ed.blocks[i];
+    if matches!(b.kind, BlockKind::Code | BlockKind::Formula) {
+        return;
+    }
+    if let Some(c) = ligature_before(&mut b.text, cursor) {
+        let id = b.id;
+        ed.focus_block(id, c, c);
+    }
+}
+
+/// Troca a sequência terminada no caractere `cursor`; devolve o novo cursor.
+/// O que está dentro de `código` fica como foi digitado.
+fn ligature_before(text: &mut String, cursor: usize) -> Option<usize> {
+    let end = text.char_indices().map(|(k, _)| k).chain([text.len()]).nth(cursor)?;
+    let before = &text[..end];
+    if before.matches('`').count() % 2 == 1 {
+        return None;
+    }
+    let (from, to) = LIGATURES.iter().find(|(from, _)| before.ends_with(from))?;
+    text.replace_range(end - from.len()..end, to);
+    Some(cursor - from.chars().count() + to.chars().count())
 }
 
 fn markdown_shortcuts(ed: &mut PageEditor, i: usize) {
@@ -1706,6 +1838,8 @@ fn image_block(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, i: usize, w: f32
             }
         }
         let mut cap = ed.blocks[i].caption.clone();
+        // Vazia antes da tecla: o Backspace que apaga a última letra não pode apagar a imagem também.
+        let was_empty = cap.is_empty();
         let resp = ui.add(
             egui::TextEdit::singleline(&mut cap)
                 .id(block_id(b.id))
@@ -1723,7 +1857,7 @@ fn image_block(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, i: usize, w: f32
         if resp.has_focus() {
             ed.focus = Some(b.id);
             // Backspace/Delete na legenda vazia apaga a imagem, como num parágrafo vazio.
-            if ed.blocks[i].caption.is_empty() && ui.ctx().input_mut(|inp| inp.consume_key(Modifiers::NONE, Key::Backspace) || inp.consume_key(Modifiers::NONE, Key::Delete)) {
+            if was_empty && ui.ctx().input_mut(|inp| inp.consume_key(Modifiers::NONE, Key::Backspace) || inp.consume_key(Modifiers::NONE, Key::Delete)) {
                 actions.push(Action::Delete(i));
             }
         }
@@ -2020,10 +2154,16 @@ fn apply_actions(app: &mut App, ed: &mut PageEditor, actions: Vec<Action>, sid: 
                 };
                 let text = selected.unwrap_or_else(|| match b.kind {
                     BlockKind::Image => rich::image_markup(&b.media),
-                    BlockKind::Table => b.plain(),
+                    BlockKind::Table | BlockKind::Diagram => b.plain(),
                     _ => b.text.clone(),
                 });
                 let deck = app.default_deck().filter(|d| app.deck(*d).is_some_and(|d| d.subject_id == sid)).or_else(|| app.root_decks(sid).first().map(|d| d.id));
+                // Com o painel de um cartão novo aberto, o trecho vai para ele em vez de abrir outro.
+                let docked = app.side_panel();
+                if let Some(ne) = app.note_editor.as_mut().filter(|ne| ne.is_new() && docked) {
+                    ne.insert_text(&text);
+                    continue;
+                }
                 match deck {
                     Some(d) => {
                         app.note_editor = Some(super::note_editor::NoteEditor::new_note(d, Some((ed.meta.id, Some(b.id), text, ed.title.clone()))));
@@ -2282,6 +2422,8 @@ pub fn body_markdown(blocks: &[Block], media_prefix: &str) -> String {
                 format!("> [!{tag}]\n> {}", quoted(&b.text))
             }
             BlockKind::Code => format!("```{}\n{}\n```", b.lang, b.text),
+            // JSON num bloco de código: o modo Markdown relê e o fluxograma volta inteiro.
+            BlockKind::Diagram => format!("```diagram\n{}\n```", serde_json::to_string(&b.diagram).unwrap_or_default()),
             BlockKind::Formula => format!("$$\n{}\n$$", b.text),
             BlockKind::Divider => "---".to_owned(),
             BlockKind::Image => format!("![{}]({media_prefix}{})", b.caption, b.media),
@@ -2363,9 +2505,19 @@ fn parse_markdown(md: &str, title_line: bool, mut image: impl FnMut(&str) -> Str
                 }
                 code.push(l.to_owned());
             }
-            let mut b = Block::new(BlockKind::Code, code.join("\n"));
-            b.lang = lang;
-            b
+            let diagram = (lang == "diagram").then(|| serde_json::from_str::<crate::db::Diagram>(&code.join("\n")).ok()).flatten();
+            match diagram {
+                Some(d) => {
+                    let mut b = Block::new(BlockKind::Diagram, "");
+                    b.diagram = d;
+                    b
+                }
+                None => {
+                    let mut b = Block::new(BlockKind::Code, code.join("\n"));
+                    b.lang = lang;
+                    b
+                }
+            }
         } else if s == "$$" {
             let mut f = Vec::new();
             for l in lines.by_ref() {
@@ -2467,7 +2619,7 @@ pub(super) fn source_blocks(md: &str, page: &[Block]) -> Vec<Block> {
 /// Markdown não guarda, como a largura das imagens) dos blocos que continuam
 /// lá, para não soltar os cartões vinculados a eles.
 fn keep_ids(old: &[Block], new: &mut [Block]) {
-    let same = |a: &Block, b: &Block| a.kind == b.kind && a.text == b.text && a.rows == b.rows && a.media == b.media && a.caption == b.caption;
+    let same = |a: &Block, b: &Block| a.kind == b.kind && a.text == b.text && a.rows == b.rows && a.media == b.media && a.caption == b.caption && a.diagram == b.diagram;
     let mut map: Vec<Option<usize>> = vec![None; new.len()];
     let mut used = vec![false; old.len()];
     // Primeiro, os blocos iguais, em ordem.
@@ -2495,7 +2647,48 @@ fn keep_ids(old: &[Block], new: &mut [Block]) {
         if let Some(k) = m {
             b.id = old[k].id;
             b.width = old[k].width;
+            b.ink = old[k].ink.clone();
+            b.fill = old[k].fill.clone();
         }
+    }
+}
+
+/// Número de cada item de lista numerada (0 nos outros blocos): conta por nível
+/// e recomeça depois de um bloco que não é lista.
+pub(super) fn numbering(blocks: &[Block]) -> Vec<u32> {
+    let mut out = Vec::with_capacity(blocks.len());
+    let mut counters = [0u32; 8];
+    for b in blocks {
+        if b.kind == BlockKind::Numbered {
+            let lvl = b.indent.min(7) as usize;
+            counters[lvl] += 1;
+            for c in counters.iter_mut().skip(lvl + 1) {
+                *c = 0;
+            }
+            out.push(counters[lvl]);
+        } else {
+            if !b.kind.is_list() {
+                counters = [0; 8];
+            }
+            out.push(0);
+        }
+    }
+    out
+}
+
+/// PDF, HTML ou EPUB com o visual da página (tema claro). `ext`: "pdf", "html" ou "epub".
+fn export_visual(app: &mut App, ed: &PageEditor, ctx: &egui::Context, ext: &str) {
+    let safe: String = ed.title.chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' { c } else { '_' }).collect();
+    let Some(path) = rfd::FileDialog::new().set_file_name(format!("{}.{ext}", safe.trim())).add_filter(ext.to_uppercase(), &[ext]).save_file() else { return };
+    let media = app.db.media_dir();
+    let bytes = match ext {
+        "pdf" => super::pdf::render(super::pdf::page_doc(ctx, &ed.title, &ed.blocks, &media)),
+        "epub" => Ok(super::epub::page_epub(ctx, &ed.title, &ed.blocks, &media)),
+        _ => Ok(super::export::page_html(ctx, &ed.title, &ed.blocks, &media).into_bytes()),
+    };
+    match bytes.and_then(|b| Ok(std::fs::write(&path, b)?)) {
+        Ok(()) => app.toast(tr!("toast.exported", path = path.display())),
+        Err(e) => app.error(e),
     }
 }
 
@@ -2548,6 +2741,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ligatures_replace_only_before_the_cursor() {
+        // Digita tecla por tecla, como no editor.
+        fn typed(keys: &str) -> String {
+            let mut s = String::new();
+            let mut cursor = 0;
+            for k in keys.chars() {
+                s.insert(s.char_indices().nth(cursor).map_or(s.len(), |(i, _)| i), k);
+                cursor += 1;
+                if let Some(c) = ligature_before(&mut s, cursor) {
+                    cursor = c;
+                }
+            }
+            s
+        }
+        assert_eq!(typed("ação --> fim"), "ação ⟶ fim");
+        assert_eq!(typed("a <-- b <--> c"), "a ⟵ b ⟷ c");
+        assert_eq!(typed("a -- b -> c <- d <-> e"), "a — b → c ← d ↔ e");
+        assert_eq!(typed("x <= y >= z != w => v <=> u ~= t +- s"), "x ≤ y ≥ z ≠ w ⇒ v ⇔ u ≈ t ± s");
+        assert_eq!(typed("---"), "---");
+        assert_eq!(typed("`a->b` c->d"), "`a->b` c→d");
+        let mut s = "a --> b".to_owned();
+        assert_eq!(ligature_before(&mut s, 7), None, "o cursor não está logo depois da seta");
+    }
+
+    #[test]
     fn markdown_roundtrip() {
         let blocks = vec![
             Block::new(BlockKind::H1, "Fases"),
@@ -2578,6 +2796,12 @@ mod tests {
         table.rows = vec![vec!["a".into(), "b".into()], vec!["1".into(), "2".into()]];
         let mut code = Block::new(BlockKind::Code, "fn main() {}\n\n// fim");
         code.lang = "rust".into();
+        let mut flow = Block::new(BlockKind::Diagram, "");
+        flow.diagram.nodes = vec![
+            crate::db::DiagramNode { id: 1, x: 80.0, y: 40.0, text: "Início".into(), shape: "pill".into(), color: "green".into() },
+            crate::db::DiagramNode { id: 2, x: 300.0, y: 40.0, text: "Fim".into(), ..Default::default() },
+        ];
+        flow.diagram.edges = vec![crate::db::DiagramEdge { from: 1, to: 2 }];
         let blocks = vec![
             Block::new(BlockKind::H1, "Fases"),
             Block::new(BlockKind::Paragraph, "linha um\nlinha dois"),
@@ -2593,6 +2817,7 @@ mod tests {
             Block::new(BlockKind::Divider, ""),
             img,
             table,
+            flow,
         ];
         let md = body_markdown(&blocks, "");
         let (title, mut back) = parse_markdown(&md, false, str::to_owned);
@@ -2601,6 +2826,7 @@ mod tests {
         assert_eq!(back.len(), blocks.len(), "{md}");
         for (a, b) in blocks.iter().zip(&back) {
             assert_eq!((a.id, a.kind, &a.text, a.indent, a.checked, &a.rows, &a.media, &a.caption, a.width), (b.id, b.kind, &b.text, b.indent, b.checked, &b.rows, &b.media, &b.caption, b.width), "{md}");
+            assert_eq!(a.diagram, b.diagram);
         }
         // Um bloco editado no Markdown continua com o mesmo id.
         let (_, mut edited) = parse_markdown(&md.replace("depois da lista", "depois da lista, editado"), false, str::to_owned);

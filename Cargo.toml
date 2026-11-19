@@ -1,6 +1,6 @@
 [package]
 name = "discite"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 
 [dependencies]
@@ -22,6 +22,10 @@ ureq = "3"
 # Leva os avisos e erros do llama.cpp para o log de diagnóstico.
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std"] }
+typst = "0.15.1"
+typst-pdf = "0.15.1"
+typst-layout = "0.15.1"
+crc32fast = "1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Globalization", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell"] }
@@ -48,3 +52,67 @@ strip = true
 
 [profile.dev.package."*"]
 opt-level = 2
+
+# O PDF (Typst) sai em milissegundos: essas crates são otimizadas para tamanho.
+[profile.release.package.typst]
+opt-level = "s"
+
+[profile.release.package.typst-library]
+opt-level = "s"
+
+[profile.release.package.typst-layout]
+opt-level = "s"
+
+[profile.release.package.typst-eval]
+opt-level = "s"
+
+[profile.release.package.typst-realize]
+opt-level = "s"
+
+[profile.release.package.typst-pdf]
+opt-level = "s"
+
+[profile.release.package.typst-svg]
+opt-level = "s"
+
+[profile.release.package.typst-html]
+opt-level = "s"
+
+[profile.release.package.typst-syntax]
+opt-level = "s"
+
+[profile.release.package.krilla]
+opt-level = "s"
+
+[profile.release.package.hayagriva]
+opt-level = "s"
+
+[profile.release.package.citationberg]
+opt-level = "s"
+
+[profile.release.package.syntect]
+opt-level = "s"
+
+[profile.release.package.two-face]
+opt-level = "s"
+
+[profile.release.package.wasmi]
+opt-level = "s"
+
+[profile.release.package.wasmi_core]
+opt-level = "s"
+
+[profile.release.package.wasmi_ir]
+opt-level = "s"
+
+[profile.release.package.icu_segmenter]
+opt-level = "s"
+
+[profile.release.package.icu_properties]
+opt-level = "s"
+
+[profile.release.package.icu_collator]
+opt-level = "s"
+
+[profile.release.package.hypher]
+opt-level = "s"

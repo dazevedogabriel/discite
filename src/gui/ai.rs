@@ -22,6 +22,8 @@ use std::sync::mpsc::Receiver;
 pub struct AiState {
     pub download: Option<models::Download>,
     pub review: Option<Review>,
+    /// Revisão aberta no caderno, guardada enquanto se usa outra tela.
+    parked: Option<Review>,
     /// Nome da GPU (procurado uma vez, numa thread, para não travar a tela).
     gpu: Option<Option<String>>,
     gpu_probe: Option<Receiver<Option<String>>>,
@@ -34,14 +36,14 @@ pub struct AiState {
 }
 
 /// A IA escolhida nas Configurações.
-enum Engine {
+pub(super) enum Engine {
     Listed(&'static ModelSpec),
     File(PathBuf),
     Online(Api),
 }
 
 impl Engine {
-    fn of(app: &App) -> Engine {
+    pub(super) fn of(app: &App) -> Engine {
         if app.cfg.ai_model == "online" {
             Engine::Online(app.cfg.ai_api.clone())
         } else if let Some(p) = app.cfg.ai_model.strip_prefix("file:") {
@@ -51,7 +53,7 @@ impl Engine {
         }
     }
 
-    fn ready(&self) -> bool {
+    pub(super) fn ready(&self) -> bool {
         match self {
             Engine::Listed(m) => models::is_installed(m),
             Engine::File(p) => p.is_file(),
@@ -59,7 +61,7 @@ impl Engine {
         }
     }
 
-    fn name(&self) -> String {
+    pub(super) fn name(&self) -> String {
         match self {
             Engine::Listed(m) => m.name.to_owned(),
             Engine::File(p) => p.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
@@ -150,9 +152,12 @@ pub struct Review {
     /// Textos dos cartões que a página já tem.
     existing: Vec<String>,
     truncated: bool,
+    /// A IA local não vê as imagens da página: só as legendas entraram.
+    images_ignored: bool,
 }
 
-const COUNTS: [u32; 3] = [5, 10, 15];
+/// Teto de cartões por pedido: cada um custa uns 220 tokens de saída.
+const MAX_COUNT: u32 = 50;
 
 /// Abre a janela para a página aberta no caderno.
 pub fn open(app: &mut App, scope: Scope) {
@@ -182,7 +187,7 @@ fn open_page(app: &mut App, page: i64, title: String, subject: i64, scope: Scope
     };
     let bank = app.db.list_banks(subject).ok().and_then(|b| b.first().map(|b| b.id));
     let style = app.cfg.ai_style;
-    let count = if COUNTS.contains(&app.cfg.ai_count) { app.cfg.ai_count } else { 10 };
+    let count = if (1..=MAX_COUNT).contains(&app.cfg.ai_count) { app.cfg.ai_count } else { 10 };
     app.ai.review = Some(Review {
         page,
         title,
@@ -203,6 +208,7 @@ fn open_page(app: &mut App, page: i64, title: String, subject: i64, scope: Scope
         snippets: HashMap::new(),
         existing: vec![],
         truncated: false,
+        images_ignored: false,
     });
 }
 
@@ -224,8 +230,11 @@ fn start(app: &mut App, ctx: &egui::Context) {
         Scope::Selection(Some(id), text) => (all.iter().filter(|b| b.id == *id).cloned().collect(), Some(crate::rich::plain(text))),
         Scope::Selection(None, md) => (super::page::source_blocks(md, &all), None),
     };
-    let source = prompt::source(&r.title, &blocks);
+    // Só a IA online enxerga imagens; a local fica com as legendas (e avisa).
+    let online = matches!(engine, Engine::Online(_));
+    let source = prompt::source_with(&r.title, &blocks, online);
     r.truncated = source.truncated;
+    r.images_ignored = !online && blocks.iter().any(|b| b.kind == crate::db::BlockKind::Image && !b.media.is_empty());
     r.snippets = all.iter().map(|b| (b.id, b.plain().chars().take(70).collect())).collect();
     let questions = r.make == Make::Questions;
     let before: Vec<String> = if questions {
@@ -255,6 +264,8 @@ fn start(app: &mut App, ctx: &egui::Context) {
         // Uma questão (enunciado, quatro alternativas e explicação) é bem maior que um cartão.
         max_tokens: count as usize * if questions { 360 } else { 220 } + 200,
         questions,
+        media: app.db.media_dir(),
+        images: source.images.clone(),
     };
     r.ids = source.ids;
     let c = ctx.clone();
@@ -389,14 +400,12 @@ fn valid(s: &Sugg) -> bool {
 // ───────────────────────────── janela ─────────────────────────────
 
 pub fn show(app: &mut App, ctx: &egui::Context) {
-    let Some(mut r) = app.ai.review.take() else { return };
-    poll(&mut r);
-    // Nada começa sozinho: com o modelo pronto (inclusive logo depois de
-    // baixar), a janela espera o usuário escolher as opções e clicar em Gerar.
-    if r.status == Status::NeedModel && Engine::of(app).ready() {
-        r.status = Status::Ready;
+    // No caderno a revisão é desenhada ao lado da página (`panel`).
+    if app.side_panel() {
+        return;
     }
-
+    let Some(mut r) = app.ai.review.take() else { return };
+    prepare(app, &mut r);
     let p = pal();
     let screen = ctx.content_rect();
     let size = vec2(980.0f32.min(screen.width() - 40.0), 720.0f32.min(screen.height() - 70.0));
@@ -412,6 +421,59 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             let rect = Rect::from_min_size(ui.max_rect().min, size);
             body(app, &mut r, ui, rect, &mut close, &mut submit, &mut regenerate);
         });
+    finish(app, r, ctx, close, submit, regenerate);
+}
+
+/// Guarda a revisão do caderno ao sair dele (senão ela viraria a janela por cima
+/// da outra tela) e a devolve na volta.
+pub fn park(app: &mut App, leaving: bool) {
+    if leaving {
+        if app.ai.review.is_some() {
+            app.ai.parked = app.ai.review.take();
+        }
+    } else if app.ai.review.is_none() {
+        app.ai.review = app.ai.parked.take();
+    }
+}
+
+/// A revisão da IA como painel ao lado da página do caderno.
+pub fn panel(app: &mut App, ui: &mut Ui, rect: Rect) {
+    let Some(mut r) = app.ai.review.take() else { return };
+    prepare(app, &mut r);
+    let p = pal();
+    ui.painter().rect_filled(rect, 0, p.window);
+    ui.painter().vline(rect.left(), rect.y_range(), Stroke::new(1.0, p.line));
+    let (mut close, mut submit, mut regenerate) = (false, false, false);
+    body(app, &mut r, ui, rect, &mut close, &mut submit, &mut regenerate);
+    finish(app, r, &ui.ctx().clone(), close, submit, regenerate);
+}
+
+/// Básico / lacuna / misto, lembrado nas configurações.
+fn style_picker(app: &mut App, r: &mut Review, ui: &mut Ui) {
+    let mut si = match r.style {
+        Style::Auto => 0,
+        Style::Basic => 1,
+        Style::Cloze => 2,
+    };
+    let (a, b, c) = (tr!("ai.style_auto"), tr!("ai.style_basic"), tr!("ai.style_cloze"));
+    if segmented(ui, &[a.as_str(), b.as_str(), c.as_str()], &mut si, 26.0, false) {
+        r.style = [Style::Auto, Style::Basic, Style::Cloze][si];
+        app.cfg.ai_style = r.style;
+        app.save_settings();
+    }
+}
+
+fn prepare(app: &App, r: &mut Review) {
+    poll(r);
+    // Nada começa sozinho: com o modelo pronto (inclusive logo depois de
+    // baixar), a janela espera o usuário escolher as opções e clicar em Gerar.
+    if r.status == Status::NeedModel && Engine::of(app).ready() {
+        r.status = Status::Ready;
+    }
+}
+
+/// Teclas, gerar de novo e adicionar: iguais na janela e no painel.
+fn finish(app: &mut App, r: Review, ctx: &egui::Context, mut close: bool, mut submit: bool, regenerate: bool) {
     if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
         close = true;
     }
@@ -454,10 +516,13 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
     };
     let label = format!("{}  {origin}", tr!("note.source"));
     let w = text_width(ui.painter(), &label, serif(12.0, W::Regular)) + 20.0;
-    let cr = Rect::from_min_size(pos2(t.right() + 14.0, head.center().y - 12.0), vec2(w.min(420.0), 24.0));
-    ui.painter().rect(cr, CornerRadius::same(255), p.chip, Stroke::new(1.0, p.border), StrokeKind::Inside);
-    let g = text(ui.painter(), pos2(cr.left() + 10.0, cr.center().y), Align2::LEFT_CENTER, &tr!("note.source"), serif(12.0, W::Regular), p.muted, 60.0);
-    text(ui.painter(), pos2(g.right() + 6.0, cr.center().y), Align2::LEFT_CENTER, &origin, serif(12.0, W::Regular), p.text2, cr.right() - g.right() - 14.0);
+    let room = head.right() - 64.0 - (t.right() + 14.0);
+    if room > 90.0 {
+        let cr = Rect::from_min_size(pos2(t.right() + 14.0, head.center().y - 12.0), vec2(w.min(420.0).min(room), 24.0));
+        ui.painter().rect(cr, CornerRadius::same(255), p.chip, Stroke::new(1.0, p.border), StrokeKind::Inside);
+        let g = text(ui.painter(), pos2(cr.left() + 10.0, cr.center().y), Align2::LEFT_CENTER, &tr!("note.source"), serif(12.0, W::Regular), p.muted, 60.0);
+        text(ui.painter(), pos2(g.right() + 6.0, cr.center().y), Align2::LEFT_CENTER, &origin, serif(12.0, W::Regular), p.text2, cr.right() - g.right() - 14.0);
+    }
     let close_r = Rect::from_center_size(pos2(head.right() - 36.0, head.center().y), vec2(40.0, 28.0));
     let cresp = ui.interact(close_r, ui.scope_id().with("close"), Sense::click());
     if cresp.hovered() {
@@ -469,10 +534,21 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
         *close = true;
     }
 
+    // No painel ao lado da página a largura é pouca: opções e rodapé em duas linhas.
+    let narrow = rect.width() < 720.0;
+    let pick_w = if narrow { 200.0 } else { 240.0 };
+
     // ── Rodapé: baralho, tags e adicionar ──
-    let foot = Rect::from_min_max(pos2(rect.left(), rect.bottom() - 68.0), rect.max);
+    let foot = Rect::from_min_max(pos2(rect.left(), rect.bottom() - if narrow { 108.0 } else { 68.0 }), rect.max);
     ui.painter().hline(foot.x_range(), foot.top(), Stroke::new(1.0, p.line));
-    let mut fu = ui.new_child(egui::UiBuilder::new().max_rect(foot.shrink2(vec2(24.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    let inner = foot.shrink2(vec2(24.0, 0.0));
+    let (row1, row2) = if narrow {
+        let mid = inner.center().y + 4.0;
+        (Rect::from_min_max(inner.min, pos2(inner.right(), mid)), Rect::from_min_max(pos2(inner.left(), mid), inner.max))
+    } else {
+        (inner, inner)
+    };
+    let mut fu = ui.new_child(egui::UiBuilder::new().max_rect(row1).layout(egui::Layout::left_to_right(egui::Align::Center)));
     fu.spacing_mut().item_spacing.x = 10.0;
     let questions = r.make == Make::Questions;
     if questions {
@@ -480,7 +556,7 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
         let subject_name = app.subject(r.subject).map(|s| s.name.clone()).unwrap_or_default();
         let cur = r.bank.and_then(|b| banks.iter().find(|x| x.id == b)).map(|b| b.name.clone()).unwrap_or_else(|| subject_name.clone());
         let color = app.subject(r.subject).map(|s| subject_color(s.color));
-        select_field(&mut fu, "ai_bank", &cur, color, 240.0, 36.0, |ui| {
+        select_field(&mut fu, "ai_bank", &cur, color, pick_w, 36.0, |ui| {
             for b in &banks {
                 if menu_item(ui, &b.name, Some(b.id) == r.bank).clicked() {
                     r.bank = Some(b.id);
@@ -496,7 +572,7 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
         let color = app.subject_color_of_deck(r.deck);
         let decks = app.decks.clone();
         let mut pick = None;
-        select_field(&mut fu, "ai_deck", &path, Some(color), 240.0, 36.0, |ui| {
+        select_field(&mut fu, "ai_deck", &path, Some(color), pick_w, 36.0, |ui| {
             for s in app.subjects.clone() {
                 for d in decks.iter().filter(|d| d.subject_id == s.id) {
                     if menu_item_ex(ui, &app.deck_path(d.id), Some(subject_color(s.color)), d.id == r.deck, None).clicked() {
@@ -509,10 +585,12 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
         if let Some(d) = pick {
             r.deck = d;
         }
-        text_field(&mut fu, &mut r.tags, &tr!("ai.tags_hint"), 170.0, 36.0).on_hover_text(tr!("ai.tags_tip"));
+        let tw = if narrow { fu.available_width() } else { 170.0 };
+        text_field(&mut fu, &mut r.tags, &tr!("ai.tags_hint"), tw, 36.0).on_hover_text(tr!("ai.tags_tip"));
     }
     let chosen = r.items.iter().filter(|i| i.keep && valid(&i.s)).count();
-    fu.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+    let mut fu2 = if narrow { ui.new_child(egui::UiBuilder::new().max_rect(row2).layout(egui::Layout::left_to_right(egui::Align::Center))) } else { fu };
+    fu2.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         let label = match (questions, chosen) {
             (false, 0) => tr!("ai.add_none"),
             (false, n) => tr_n!("ai.add_n", n),
@@ -529,9 +607,16 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
     });
 
     // ── Barra de opções e estado ──
-    let bar = Rect::from_min_size(pos2(rect.left(), head.bottom()), vec2(rect.width(), 58.0));
+    let bar = Rect::from_min_size(pos2(rect.left(), head.bottom()), vec2(rect.width(), if narrow { 100.0 } else { 58.0 }));
     ui.painter().hline(bar.x_range(), bar.bottom() - 0.5, Stroke::new(1.0, p.line));
-    let mut bu = ui.new_child(egui::UiBuilder::new().max_rect(bar.shrink2(vec2(24.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    let inner = bar.shrink2(vec2(24.0, 0.0));
+    let (brow1, brow2) = if narrow {
+        let mid = inner.center().y;
+        (Rect::from_min_max(inner.min, pos2(inner.right(), mid + 2.0)), Rect::from_min_max(pos2(inner.left(), mid - 2.0), inner.max))
+    } else {
+        (inner, inner)
+    };
+    let mut bu = ui.new_child(egui::UiBuilder::new().max_rect(brow1).layout(egui::Layout::left_to_right(egui::Align::Center)));
     bu.spacing_mut().item_spacing.x = 10.0;
     let busy = running(r);
     let need_model = r.status == Status::NeedModel;
@@ -546,27 +631,17 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
             r.status = Status::Ready;
         }
         let questions = r.make == Make::Questions;
-        let mut ci = COUNTS.iter().position(|c| *c == r.count).unwrap_or(1);
-        let labels: Vec<String> = COUNTS.iter().map(|c| if questions { tr_n!("ai.n_questions", *c as usize) } else { tr_n!("ai.n_cards", *c as usize) }).collect();
-        let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
-        if segmented(ui, &refs, &mut ci, 26.0, false) {
-            r.count = COUNTS[ci];
+        // "10 cartões" → "cartões": a palavra no plural certo vira o sufixo do campo.
+        let label = if questions { tr_n!("ai.n_questions", r.count as usize) } else { tr_n!("ai.n_cards", r.count as usize) };
+        let word = label.split_once(' ').map_or(label.as_str(), |w| w.1);
+        let mut n = r.count;
+        if number_field(ui, "ai_count", &mut n, word, 130.0) {
+            r.count = n.clamp(1, MAX_COUNT);
             app.cfg.ai_count = r.count;
             app.save_settings();
         }
-        if questions {
-            return;
-        }
-        let mut si = match r.style {
-            Style::Auto => 0,
-            Style::Basic => 1,
-            Style::Cloze => 2,
-        };
-        let (a, b, c) = (tr!("ai.style_auto"), tr!("ai.style_basic"), tr!("ai.style_cloze"));
-        if segmented(ui, &[a.as_str(), b.as_str(), c.as_str()], &mut si, 26.0, false) {
-            r.style = [Style::Auto, Style::Basic, Style::Cloze][si];
-            app.cfg.ai_style = r.style;
-            app.save_settings();
+        if !narrow && !questions {
+            style_picker(app, r, ui);
         }
     });
     bu.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -586,8 +661,18 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
                 *regenerate = true;
             }
         }
-        status_line(app, r, ui);
+        if !narrow {
+            status_line(app, r, ui);
+        }
     });
+    if narrow {
+        let mut bu2 = ui.new_child(egui::UiBuilder::new().max_rect(brow2).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        bu2.spacing_mut().item_spacing.x = 10.0;
+        if r.make == Make::Cards {
+            bu2.add_enabled_ui(!busy && !need_model, |ui| style_picker(app, r, ui));
+        }
+        bu2.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| status_line(app, r, ui));
+    }
 
     // ── Corpo ──
     let opts = Rect::from_min_size(pos2(rect.left(), bar.bottom()), vec2(rect.width(), 52.0));
@@ -619,6 +704,9 @@ fn body(app: &mut App, r: &mut Review, ui: &mut Ui, rect: Rect, close: &mut bool
         ui.spacing_mut().item_spacing.y = 12.0;
         if r.truncated {
             para(ui, &tr!("ai.truncated"), serif(12.5, W::Italic), p.muted);
+        }
+        if r.images_ignored {
+            para(ui, &tr!("ai.images_ignored"), serif(12.5, W::Italic), p.muted);
         }
         let snippets = r.snippets.clone();
         let mut remove = None;
@@ -704,6 +792,10 @@ fn item_card(ui: &mut Ui, i: usize, item: &mut Item, snippets: &HashMap<i64, Str
                 }
             });
         });
+        let image = match &item.s {
+            Sugg::Card(s) => s.from_image,
+            Sugg::Question(q) => q.from_image,
+        };
         let (quote, grounded, missing) = match &mut item.s {
             Sugg::Card(s) if s.kind == NoteKind::Cloze => {
                 edit_field(ui, ("ai_text", i), &mut s.front, &tr!("field.text"));
@@ -734,7 +826,9 @@ fn item_card(ui: &mut Ui, i: usize, item: &mut Item, snippets: &HashMap<i64, Str
         if !quote.is_empty() {
             para(ui, &tr!("ai.quote", text = quote), serif(12.0, W::Italic), p.dim);
         }
-        if !grounded {
+        if image {
+            para(ui, &tr!("ai.from_image"), serif(12.0, W::Semi), p.hard);
+        } else if !grounded {
             let msg = if missing.is_empty() { tr!("ai.not_in_notes") } else { tr!("ai.not_in_notes_words", words = missing.join(", ")) };
             para(ui, &msg, serif(12.0, W::Semi), p.again);
         }

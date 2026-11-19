@@ -67,18 +67,33 @@ impl NoteEditor {
         e
     }
 
+    pub fn is_new(&self) -> bool {
+        !self.existing
+    }
+
+    /// Acrescenta um trecho (a seleção da página) ao campo em uso, ou ao primeiro.
+    pub fn insert_text(&mut self, text: &str) {
+        let i = self.focused.filter(|i| *i < self.note.fields.len()).unwrap_or(if self.note.kind == NoteKind::Occlusion { 2 } else { 0 });
+        let Some(f) = self.note.fields.get_mut(i) else { return };
+        if !f.trim().is_empty() {
+            f.push(' ');
+        }
+        f.push_str(text.trim());
+        self.pending_cursor = None;
+    }
+
     fn field_id(&self, i: usize) -> egui::Id {
         egui::Id::unique(("note_field", self.note.id, i))
     }
 }
 
 pub fn show(app: &mut App, ctx: &egui::Context) {
-    let Some(mut ed) = app.note_editor.take() else { return };
-    if ed.origin_title.is_none() {
-        if let Some(pid) = ed.note.source_page {
-            ed.origin_title = app.db.page(pid).ok().flatten().map(|p| p.title);
-        }
+    // No caderno o editor é desenhado ao lado da página (`panel`).
+    if app.side_panel() {
+        return;
     }
+    let Some(mut ed) = app.note_editor.take() else { return };
+    origin(app, &mut ed);
     let p = pal();
     let screen = ctx.content_rect();
     let size = vec2(1000.0f32.min(screen.width() - 40.0), 716.0f32.min(screen.height() - 70.0));
@@ -94,6 +109,31 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
             let rect = Rect::from_min_size(rect.min, size);
             body(app, &mut ed, ui, rect, &mut close, &mut submit);
         });
+    finish(app, ed, ctx, close, submit);
+}
+
+/// O editor como painel ao lado da página do caderno.
+pub fn panel(app: &mut App, ui: &mut Ui, rect: Rect) {
+    let Some(mut ed) = app.note_editor.take() else { return };
+    origin(app, &mut ed);
+    let p = pal();
+    ui.painter().rect_filled(rect, 0, p.window);
+    ui.painter().vline(rect.left(), rect.y_range(), Stroke::new(1.0, p.line));
+    let (mut close, mut submit) = (false, false);
+    body(app, &mut ed, ui, rect, &mut close, &mut submit);
+    finish(app, ed, &ui.ctx().clone(), close, submit);
+}
+
+fn origin(app: &App, ed: &mut NoteEditor) {
+    if ed.origin_title.is_none() {
+        if let Some(pid) = ed.note.source_page {
+            ed.origin_title = app.db.page(pid).ok().flatten().map(|p| p.title);
+        }
+    }
+}
+
+/// Teclas (Esc fecha, Ctrl+Enter grava) e gravação, iguais na janela e no painel.
+fn finish(app: &mut App, mut ed: NoteEditor, ctx: &egui::Context, mut close: bool, mut submit: bool) {
     if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) && ed.drag.is_none() {
         close = true;
     }
@@ -171,10 +211,13 @@ fn body(app: &mut App, ed: &mut NoteEditor, ui: &mut Ui, rect: Rect, close: &mut
     if let Some(title) = &ed.origin_title {
         let label = format!("{}  {title}", tr!("note.source"));
         let w = text_width(ui.painter(), &label, serif(12.0, W::Regular)) + 20.0;
-        let cr = Rect::from_min_size(pos2(t.right() + 14.0, head.center().y - 12.0), vec2(w.min(380.0), 24.0));
-        ui.painter().rect(cr, CornerRadius::same(255), p.chip, Stroke::new(1.0, p.border), StrokeKind::Inside);
-        let g = text(ui.painter(), pos2(cr.left() + 10.0, cr.center().y), Align2::LEFT_CENTER, &tr!("note.source"), serif(12.0, W::Regular), p.muted, 60.0);
-        text(ui.painter(), pos2(g.right() + 6.0, cr.center().y), Align2::LEFT_CENTER, title, serif(12.0, W::Regular), p.text2, cr.right() - g.right() - 14.0);
+        let room = head.right() - 64.0 - (t.right() + 14.0);
+        if room > 90.0 {
+            let cr = Rect::from_min_size(pos2(t.right() + 14.0, head.center().y - 12.0), vec2(w.min(380.0).min(room), 24.0));
+            ui.painter().rect(cr, CornerRadius::same(255), p.chip, Stroke::new(1.0, p.border), StrokeKind::Inside);
+            let g = text(ui.painter(), pos2(cr.left() + 10.0, cr.center().y), Align2::LEFT_CENTER, &tr!("note.source"), serif(12.0, W::Regular), p.muted, 60.0);
+            text(ui.painter(), pos2(g.right() + 6.0, cr.center().y), Align2::LEFT_CENTER, title, serif(12.0, W::Regular), p.text2, cr.right() - g.right() - 14.0);
+        }
     }
     let close_r = Rect::from_center_size(pos2(head.right() - 36.0, head.center().y), vec2(40.0, 28.0));
     let cresp = ui.interact(close_r, ui.scope_id().with("close"), Sense::click());

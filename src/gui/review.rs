@@ -22,6 +22,9 @@ pub enum Scope {
     All,
     Subject(i64),
     Deck(i64),
+    /// Sub-baralho automático: os cartões do baralho cujas notas vieram da
+    /// página (ou das subpáginas dela, na lista).
+    Page(i64, i64, Vec<i64>),
     /// Lista explícita (estudo personalizado, "Estudar estes 3").
     Cards(Vec<i64>, String),
 }
@@ -76,7 +79,7 @@ fn scope_decks(app: &App, scope: &Scope) -> Vec<i64> {
     match scope {
         Scope::All => app.decks.iter().map(|d| d.id).collect(),
         Scope::Subject(s) => app.subject_decks(*s),
-        Scope::Deck(d) => db::subtree(&app.decks, *d),
+        Scope::Deck(d) | Scope::Page(d, ..) => db::subtree(&app.decks, *d),
         Scope::Cards(..) => app.decks.iter().map(|d| d.id).collect(),
     }
 }
@@ -112,16 +115,20 @@ pub fn start(app: &mut App, scope: Scope) {
             let mut reviews: Vec<Card> = Vec::new();
             let mut news: Vec<Card> = Vec::new();
             let first_cfg = roots.first().map(|r| app.preset_of_deck(*r).cfg.clone()).unwrap_or_default();
+            let page_filter = match &scope {
+                Scope::Page(_, _, pages) => format!(" AND c.note_id IN (SELECT id FROM notes WHERE source_page IN ({}))", ids(pages)),
+                _ => String::new(),
+            };
             for r in &roots {
                 let lim = app.deck_counts(*r);
                 let sub = db::subtree(&app.decks, *r);
                 let cfg = app.preset_of_deck(*r).cfg.clone();
-                let mut rv = app.db.cards_where(&format!("c.deck_id IN ({}) AND c.queue = 0 AND c.state = 2 AND c.due < {day_end}", ids(&sub))).unwrap_or_default();
+                let mut rv = app.db.cards_where(&format!("c.deck_id IN ({}) AND c.queue = 0 AND c.state = 2 AND c.due < {day_end}{page_filter}", ids(&sub))).unwrap_or_default();
                 sort_reviews(app, &mut rv, cfg.review_order);
                 rv.truncate(lim.review as usize);
                 reviews.extend(rv);
                 let order = if cfg.new_order == srs::NewOrder::Random { "random()" } else { "c.position, c.id" };
-                let nw = app.db.cards_where(&format!("c.deck_id IN ({}) AND c.queue = 0 AND c.state = 0 ORDER BY {order} LIMIT {}", ids(&sub), lim.new)).unwrap_or_default();
+                let nw = app.db.cards_where(&format!("c.deck_id IN ({}) AND c.queue = 0 AND c.state = 0{page_filter} ORDER BY {order} LIMIT {}", ids(&sub), lim.new)).unwrap_or_default();
                 news.extend(nw);
             }
             if roots.len() > 1 {
@@ -140,6 +147,10 @@ pub fn start(app: &mut App, scope: Scope) {
                 Scope::All => (tr!("review.all_subjects"), pal().accent),
                 Scope::Subject(s) => (app.subject(*s).map(|s| s.name.clone()).unwrap_or_default(), app.subject(*s).map(|s| subject_color(s.color)).unwrap_or(pal().accent)),
                 Scope::Deck(d) => (app.deck_path(*d), app.subject_color_of_deck(*d)),
+                Scope::Page(d, pg, _) => {
+                    let page = app.db.page(*pg).ok().flatten().map(|p| p.title).unwrap_or_default();
+                    (format!("{} › {}", app.deck_path(*d), page.trim()), app.subject_color_of_deck(*d))
+                }
                 Scope::Cards(..) => unreachable!(),
             };
         }
@@ -959,7 +970,7 @@ fn finished(app: &mut App, ui: &mut Ui, body: Rect) {
         }
         if button(ui, &tr!("review.custom_study"), Btn::Secondary, 36.0).clicked() {
             let deck = match app.session.as_ref().map(|s| s.scope.clone()) {
-                Some(Scope::Deck(d)) => Some(d),
+                Some(Scope::Deck(d) | Scope::Page(d, ..)) => Some(d),
                 _ => None,
             };
             app.session = None;

@@ -37,17 +37,30 @@ pub struct Source {
     pub ids: Vec<i64>,
     /// Ficou algo de fora por causa do tamanho.
     pub truncated: bool,
+    /// Arquivos em `media/` dos blocos de imagem, na ordem "(image 1)", "(image 2)"…
+    /// Só quando a IA enxerga imagens (`source_with(…, true)`).
+    pub images: Vec<String>,
 }
 
 pub fn source(title: &str, blocks: &[Block]) -> Source {
+    source_with(title, blocks, false)
+}
+
+/// `images`: a IA vai receber as imagens; cada bloco de imagem vira uma linha
+/// "(image N)" (mesmo sem legenda) e o arquivo entra em `Source::images`.
+pub fn source_with(title: &str, blocks: &[Block], images: bool) -> Source {
     let mut text = format!("Page: {}\n", title.trim());
     let mut ids = vec![];
     let mut truncated = false;
+    let mut files = vec![];
     for b in blocks {
         let line = match b.kind {
             BlockKind::Divider => continue,
+            BlockKind::Image if images && !b.media.is_empty() => format!("(image {}) {}", files.len() + 1, b.caption.trim()),
             BlockKind::Image if b.caption.trim().is_empty() => continue,
             BlockKind::Image => format!("(image) {}", b.caption.trim()),
+            BlockKind::Diagram if b.diagram.nodes.is_empty() => continue,
+            BlockKind::Diagram => format!("(diagram)\n{}", b.diagram.plain()),
             BlockKind::H1 => format!("# {}", b.plain().trim()),
             BlockKind::H2 => format!("## {}", b.plain().trim()),
             BlockKind::H3 => format!("### {}", b.plain().trim()),
@@ -65,8 +78,42 @@ pub fn source(title: &str, blocks: &[Block]) -> Source {
         }
         text.push_str(&line);
         ids.push(b.id);
+        if images && b.kind == BlockKind::Image && !b.media.is_empty() {
+            files.push(b.media.clone());
+        }
     }
-    Source { text, ids, truncated }
+    Source { text, ids, truncated, images: files }
+}
+
+/// Como usar as imagens anexadas (cartões ou questões).
+fn image_rules(s: &Source, what: &str) -> String {
+    if s.images.is_empty() {
+        return String::new();
+    }
+    format!(
+        "\nThe notes include {} image(s), attached after this text in order: (image 1), (image 2)… You may also write {what} about what an image clearly shows. For those, set \"quote\" to \"(image N)\" and \"block\" to the number in brackets of that image's line. Use only what is visible in the image; never guess.",
+        s.images.len()
+    )
+}
+
+/// O trecho de prova é uma imagem ("(image 2)"): não há texto para conferir.
+fn from_image(quote: &str) -> bool {
+    let q = quote.trim().to_lowercase();
+    q.starts_with("(image") || q.starts_with("(imagem")
+}
+
+/// Confere o trecho nas notas, a menos que venha de uma imagem: dito no trecho
+/// ("(image 1)") ou, como os modelos fazem, copiando o texto que está na
+/// imagem e apontando a linha dela. (é imagem, conferido, linha, palavras de fora)
+fn image_or_check(quote: &str, answer: &str, block: usize, notes: &Index, image_lines: &[usize]) -> (bool, bool, Option<usize>, Vec<String>) {
+    if from_image(quote) {
+        return (true, false, None, vec![]);
+    }
+    let (grounded, line, missing) = notes.check(quote, answer);
+    if line.is_none() && image_lines.contains(&block) {
+        return (true, false, None, vec![]);
+    }
+    (false, grounded, line, missing)
 }
 
 // Sem frase de exemplo: o modelo pequeno copiava o exemplo como se fosse um
@@ -170,6 +217,7 @@ pub fn prompt(r: &Request) -> Chat {
         Style::Basic => "Use only \"basic\" cards.",
         Style::Cloze => "Use only \"cloze\" cards.",
     };
+    user.push_str(&image_rules(r.source, "cards"));
     user.push_str(&format!("\nWrite {} new flashcards; write fewer only if the notes run out of distinct facts. {kind}{}", r.count, extras(r)));
     // Dito com todas as letras: o modelo pequeno respondia em inglês a notas em português.
     // Os cartões saem no idioma do app; o trecho de prova, no das notas.
@@ -193,6 +241,7 @@ pub fn prompt_questions(r: &Request) -> Chat {
             user.push_str(&format!("- {}\n", e.replace('\n', " ")));
         }
     }
+    user.push_str(&image_rules(r.source, "questions"));
     user.push_str(&format!("\nWrite {} new multiple-choice questions; write fewer only if the notes run out of distinct facts.{}", r.count, extras(r)));
     let lang = card_language();
     user.push_str(&format!(" Write every question, option and explanation in {lang}."));
@@ -262,6 +311,8 @@ pub struct Suggestion {
     pub grounded: bool,
     /// Palavras da resposta que não aparecem nas notas.
     pub missing: Vec<String>,
+    /// Tirado de uma imagem anexada: não dá para conferir com o texto.
+    pub from_image: bool,
 }
 
 #[derive(Deserialize)]
@@ -282,7 +333,7 @@ struct Raw {
 
 impl Suggestion {
     /// `translated`: as notas estão em outro idioma que o dos cartões.
-    fn from_raw(r: Raw, ids: &[i64], notes: &Index, translated: bool) -> Option<Suggestion> {
+    fn from_raw(r: Raw, ids: &[i64], notes: &Index, translated: bool, image_lines: &[usize]) -> Option<Suggestion> {
         let quote = unlist(&r.quote);
         let (kind, front, back) = if r.kind == "cloze" {
             let text = fix_cloze(&unlist(&r.text));
@@ -303,14 +354,14 @@ impl Suggestion {
         };
         // Lacuna: o texto inteiro tem de vir da nota; básico: a resposta.
         let answer = if kind == NoteKind::Cloze { cards::strip_cloze(&front) } else { back.clone() };
-        let (grounded, line, missing) = notes.check(&quote, &answer);
+        let (image, grounded, line, missing) = image_or_check(&quote, &answer, r.block, notes, image_lines);
         // Traduzido, as palavras da resposta não estão nas notas: vale só o trecho de prova.
-        let (grounded, missing) = if translated { (line.is_some(), vec![]) } else { (grounded, missing) };
+        let (grounded, missing) = if translated && !image { (line.is_some(), vec![]) } else { (grounded, missing) };
         // O bloco de origem é onde o trecho foi achado (o número que o modelo
         // dá às vezes erra por um).
         let n = line.unwrap_or(r.block);
         let block = n.checked_sub(1).and_then(|i| ids.get(i)).copied();
-        Some(Suggestion { kind, front, back, block, quote, grounded, missing })
+        Some(Suggestion { kind, front, back, block, quote, grounded, missing, from_image: image })
     }
 
     /// Os campos da nota (Básico: frente, verso, extra; Cloze: texto, extra).
@@ -339,6 +390,7 @@ pub struct QSuggestion {
     pub quote: String,
     pub grounded: bool,
     pub missing: Vec<String>,
+    pub from_image: bool,
 }
 
 #[derive(Deserialize)]
@@ -364,7 +416,7 @@ fn catch_all(o: &str) -> bool {
 }
 
 impl QSuggestion {
-    fn from_raw(r: RawQ, ids: &[i64], notes: &Index, translated: bool, slot: usize) -> Option<QSuggestion> {
+    fn from_raw(r: RawQ, ids: &[i64], notes: &Index, translated: bool, slot: usize, image_lines: &[usize]) -> Option<QSuggestion> {
         let stem = unlist(&r.question);
         let correct = unlist(&r.correct);
         let wrong: Vec<String> = r.wrong.iter().map(|w| unlist(w)).collect();
@@ -381,8 +433,8 @@ impl QSuggestion {
             }
         }
         let quote = unlist(&r.quote);
-        let (grounded, line, missing) = notes.check(&quote, &correct);
-        let (grounded, missing) = if translated { (line.is_some(), vec![]) } else { (grounded, missing) };
+        let (image, grounded, line, missing) = image_or_check(&quote, &correct, r.block, notes, image_lines);
+        let (grounded, missing) = if translated && !image { (line.is_some(), vec![]) } else { (grounded, missing) };
         let n = line.unwrap_or(r.block);
         let block = n.checked_sub(1).and_then(|i| ids.get(i)).copied();
         // A certa vai para `slot`; as erradas ocupam as outras posições na ordem.
@@ -392,7 +444,7 @@ impl QSuggestion {
         for (i, o) in options.iter_mut().enumerate() {
             *o = if i == answer { correct.clone() } else { rest.next().unwrap_or_default() };
         }
-        Some(QSuggestion { stem, options, answer, explanation: r.explanation.trim().to_owned(), block, quote, grounded, missing })
+        Some(QSuggestion { stem, options, answer, explanation: r.explanation.trim().to_owned(), block, quote, grounded, missing, from_image: image })
     }
 
     /// O texto que identifica a questão (para comparar com as que já existem).
@@ -482,6 +534,8 @@ pub struct Stream {
     questions: bool,
     /// Questões já entregues (para sortear a posição da certa).
     made: usize,
+    /// Números das linhas "(image N)" das notas.
+    image_lines: Vec<usize>,
 }
 
 impl Stream {
@@ -495,7 +549,8 @@ impl Stream {
     /// Com o idioma dos cartões dado (`lang`), sem depender do idioma do app.
     fn for_language(ids: Vec<i64>, notes: &str, lang: &str) -> Stream {
         let translated = super::ground::language(notes).is_some_and(|l| !lang.ends_with(l));
-        Stream { buf: String::new(), pos: 0, depth: 0, in_str: false, esc: false, start: None, ids, notes: Index::new(notes), translated, questions: false, made: 0 }
+        let image_lines = notes.lines().filter_map(|l| l.strip_prefix('[')?.split_once("] (image ")?.0.parse().ok()).collect();
+        Stream { buf: String::new(), pos: 0, depth: 0, in_str: false, esc: false, start: None, ids, notes: Index::new(notes), translated, questions: false, made: 0, image_lines }
     }
 
     pub fn feed(&mut self, piece: &str) -> Vec<Out> {
@@ -530,13 +585,13 @@ impl Stream {
                                     if let Ok(raw) = serde_json::from_str::<RawQ>(obj) {
                                         // Posição da certa: sorteada, sem repetir a anterior.
                                         let slot = (self.made + 1 + rand::random::<u32>() as usize % 3) % 4;
-                                        if let Some(q) = QSuggestion::from_raw(raw, &self.ids, &self.notes, self.translated, slot) {
+                                        if let Some(q) = QSuggestion::from_raw(raw, &self.ids, &self.notes, self.translated, slot, &self.image_lines) {
                                             self.made = slot;
                                             out.push(Out::Question(q));
                                         }
                                     }
                                 } else if let Ok(raw) = serde_json::from_str::<Raw>(obj) {
-                                    out.extend(Suggestion::from_raw(raw, &self.ids, &self.notes, self.translated).map(Out::Card));
+                                    out.extend(Suggestion::from_raw(raw, &self.ids, &self.notes, self.translated, &self.image_lines).map(Out::Card));
                                 }
                             }
                         }
@@ -603,6 +658,32 @@ mod tests {
         assert!(got[1].grounded);
         assert!(!got[2].grounded);
         assert!(got[2].missing.contains(&"120".to_owned()));
+    }
+
+    #[test]
+    fn image_blocks_go_to_online_ai_and_their_cards_come_flagged() {
+        let mut img = Block::new(BlockKind::Image, "");
+        img.media = "abc.jpg".into();
+        let blocks = [Block::new(BlockKind::Paragraph, "A retina é sensorial."), img];
+        // Sem legenda, a imagem só entra quando a IA a vê.
+        assert!(source("Retina", &blocks).images.is_empty());
+        let s = source_with("Retina", &blocks, true);
+        assert_eq!(s.images, vec!["abc.jpg".to_owned()]);
+        assert!(s.text.contains("[2] (image 1)"), "{}", s.text);
+        let req = Request { source: &s, existing: &[], count: 5, style: Style::Auto, focus: None, level: Level::Medium, guide: "" };
+        assert!(prompt(&req).user.contains("1 image(s)"));
+
+        let mut st = Stream::for_language(s.ids.clone(), &s.text, "Portuguese");
+        let json = r#"{"cards": [{"type": "basic", "block": 2, "quote": "(image 1)", "front": "O que a imagem mostra?", "back": "Camadas da retina"}]}"#;
+        let got = st.feed(json);
+        let Some(Out::Card(c)) = got.first() else { panic!("{got:?}") };
+        assert!(c.from_image && !c.grounded && c.missing.is_empty());
+        assert_eq!(c.block, Some(blocks[1].id));
+        // O modelo copiou o texto que aparece na imagem e apontou a linha dela.
+        let json = r#"{"cards": [{"type": "basic", "block": 2, "quote": "ACE inhibitors block angiotensin", "front": "O que bloqueiam?", "back": "Angiotensina"}]}"#;
+        let got = st.feed(json);
+        let Some(Out::Card(c)) = got.first() else { panic!("{got:?}") };
+        assert!(c.from_image);
     }
 
     #[test]

@@ -24,6 +24,59 @@ struct DeckCache {
     retention: Option<f32>,
     forecast: Vec<u32>,
     cards: u32,
+    /// Sub-baralhos automáticos, já em árvore.
+    pages: Vec<PageRow>,
+}
+
+/// Página de origem como sub-baralho: soma os cartões das subpáginas.
+#[derive(Clone, Debug, PartialEq)]
+struct PageRow {
+    deck: i64,
+    page: i64,
+    title: String,
+    depth: usize,
+    counts: crate::db::Counts,
+    /// A página e as subpáginas: o que "Estudar" inclui.
+    ids: Vec<i64>,
+}
+
+/// Árvore das páginas que deram cartões ao baralho, com as mães delas (na
+/// ordem do caderno). Páginas de fora da disciplina entram soltas, no fim.
+fn page_tree(pages: &[crate::db::PageMeta], counts: &[(i64, i64, String, crate::db::Counts)], deck: i64) -> Vec<PageRow> {
+    use crate::db::Counts;
+    let direct: HashMap<i64, Counts> = counts.iter().filter(|c| c.0 == deck).map(|c| (c.1, c.3)).collect();
+    let kids = |id: Option<i64>| pages.iter().filter(move |p| p.parent_id == id).collect::<Vec<_>>();
+    fn walk(p: &crate::db::PageMeta, depth: usize, pages: &[crate::db::PageMeta], direct: &HashMap<i64, Counts>, out: &mut Vec<PageRow>, deck: i64) -> Option<(Counts, Vec<i64>)> {
+        let at = out.len();
+        let mut c = direct.get(&p.id).copied().unwrap_or_default();
+        let mut ids = vec![p.id];
+        let mut any = direct.contains_key(&p.id);
+        out.push(PageRow { deck, page: p.id, title: p.title.clone(), depth, counts: c, ids: vec![] });
+        for k in pages.iter().filter(|k| k.parent_id == Some(p.id)) {
+            if let Some((kc, kids)) = walk(k, depth + 1, pages, direct, out, deck) {
+                c.new += kc.new;
+                c.learn += kc.learn;
+                c.review += kc.review;
+                ids.extend(kids);
+                any = true;
+            }
+        }
+        if !any {
+            out.truncate(at);
+            return None;
+        }
+        out[at].counts = c;
+        out[at].ids = ids.clone();
+        Some((c, ids))
+    }
+    let mut out = vec![];
+    for root in kids(None) {
+        walk(root, 0, pages, &direct, &mut out, deck);
+    }
+    for (_, page, title, c) in counts.iter().filter(|c| c.0 == deck && !pages.iter().any(|p| p.id == c.1)) {
+        out.push(PageRow { deck, page: *page, title: title.clone(), depth: 0, counts: *c, ids: vec![*page] });
+    }
+    out
 }
 
 /// Abre o caderno na última página vista (ou na primeira).
@@ -68,7 +121,10 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64, current: Tab) {
         let ov = stats::overview(&app.db, &Scope(Some(&deck_ids)), app.clock.day_start(today - 29), 30).ok();
         let fc = stats::forecast(&app.db, &Scope(Some(&deck_ids)), &app.clock, 7).unwrap_or_default();
         let cards = stats::card_counts(&app.db, &Scope(Some(&deck_ids))).map(|c| c.total()).unwrap_or(0);
-        app.subject_view.cache = Some((version, sid, DeckCache { retention: ov.and_then(|o| o.retention), forecast: fc, cards }));
+        let all = app.db.page_counts(crate::srs::now_ms() + crate::srs::LEARN_AHEAD_MS, app.clock.today_end()).unwrap_or_default();
+        let tree = app.db.list_pages(sid).unwrap_or_default();
+        let pages = deck_ids.iter().flat_map(|d| page_tree(&tree, &all, *d)).collect();
+        app.subject_view.cache = Some((version, sid, DeckCache { retention: ov.and_then(|o| o.retention), forecast: fc, cards, pages }));
     }
     let cache = app.subject_view.cache.as_ref().map(|c| c.2.clone()).unwrap_or_default();
 
@@ -211,7 +267,13 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64, current: Tab) {
             flatten(&decks, d, 0, &mut rows);
         }
         for (d, lvl) in rows {
-            deck_row(app, ui, &d, lvl, &decks, xs);
+            let pages: Vec<_> = cache.pages.iter().filter(|r| r.deck == d.id).collect();
+            deck_row(app, ui, &d, lvl, &decks, !pages.is_empty(), xs);
+            if !d.collapsed {
+                for r in pages {
+                    page_row(app, ui, r, lvl + 1, xs);
+                }
+            }
         }
         if decks.is_empty() {
             ui.add_space(30.0);
@@ -244,7 +306,47 @@ fn flatten(all: &[Deck], d: &Deck, lvl: usize, out: &mut Vec<(Deck, usize)>) {
     }
 }
 
-fn deck_row(app: &mut App, ui: &mut Ui, d: &Deck, lvl: usize, all: &[Deck], xs: [f32; 3]) {
+/// Sub-baralho automático: os cartões do baralho que vieram de uma página.
+fn page_row(app: &mut App, ui: &mut Ui, r: &PageRow, lvl: usize, xs: [f32; 3]) {
+    let (title, c, page) = (r.title.as_str(), r.counts, r.page);
+    let lvl = lvl + r.depth;
+    let p = pal();
+    let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::click());
+    let hovered = ui.rect_contains_pointer(rect);
+    if hovered {
+        ui.painter().rect_filled(rect, CornerRadius::ZERO, p.hover);
+    }
+    ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, p.line_row));
+    let x = rect.left() + 17.0 + lvl as f32 * 22.0;
+    text(ui.painter(), pos2(x + 6.0, rect.center().y), Align2::CENTER_CENTER, "¶", serif(12.0, W::Regular), p.dim, 18.0);
+    text(ui.painter(), pos2(x + 20.0, rect.center().y), Align2::LEFT_CENTER, title.trim(), serif(13.5, W::Italic), p.text2, xs[0] - x - 120.0);
+    for (i, (v, col)) in [(c.new, p.easy), (c.learn, p.hard), (c.review, p.good)].into_iter().enumerate() {
+        text(ui.painter(), pos2(xs[i], rect.center().y), Align2::RIGHT_CENTER, &v.to_string(), serif(13.5, W::Regular), if v > 0 { col } else { p.dim }, 60.0);
+    }
+    let study = |app: &mut App| review::start(app, review::Scope::Page(r.deck, page, r.ids.clone()));
+    let actions = Rect::from_min_max(pos2(rect.right() - if rect.width() < 640.0 { 112.0 } else { 168.0 }, rect.top()), pos2(rect.right() - 17.0, rect.bottom()));
+    let mut au = ui.new_child(egui::UiBuilder::new().max_rect(actions).layout(egui::Layout::right_to_left(egui::Align::Center)));
+    au.spacing_mut().item_spacing.x = 6.0;
+    au.add_space(34.0);
+    if hovered && c.new + c.learn + c.review > 0 && button(&mut au, &tr!("nav.study"), Btn::Primary, 26.0).clicked() {
+        study(app);
+    }
+    a11y(&resp, egui::accesskit::Role::Row, title, None);
+    if resp.double_clicked() {
+        study(app);
+    }
+    resp.context_menu(|ui| {
+        if menu_item(ui, &tr!("nav.study"), false).clicked() {
+            study(app);
+        }
+        if menu_item(ui, &tr!("deck.open_page"), false).clicked() {
+            app.open_page(page);
+        }
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn deck_row(app: &mut App, ui: &mut Ui, d: &Deck, lvl: usize, all: &[Deck], has_pages: bool, xs: [f32; 3]) {
     let p = pal();
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), Sense::click());
     let hovered = ui.rect_contains_pointer(rect);
@@ -252,7 +354,7 @@ fn deck_row(app: &mut App, ui: &mut Ui, d: &Deck, lvl: usize, all: &[Deck], xs: 
         ui.painter().rect_filled(rect, CornerRadius::ZERO, p.hover);
     }
     ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, p.line_row));
-    let has_kids = all.iter().any(|k| k.parent_id == Some(d.id));
+    let has_kids = has_pages || all.iter().any(|k| k.parent_id == Some(d.id));
     let x = rect.left() + 17.0 + lvl as f32 * 22.0;
     if has_kids {
         let caret = Rect::from_center_size(pos2(x + 6.0, rect.center().y), vec2(18.0, 24.0));
@@ -329,5 +431,22 @@ fn deck_menu(app: &mut App, ui: &mut Ui, d: &Deck) {
     menu_sep(ui);
     if menu_item(ui, &tr!("deck.delete"), false).clicked() {
         app.modal = Some(Modal::DeleteDeck(d.id));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{Counts, PageMeta};
+
+    #[test]
+    fn page_tree_keeps_parents_and_sums_subpages() {
+        let page = |id, parent: Option<i64>, t: &str| PageMeta { id, subject_id: 1, parent_id: parent, title: t.into(), position: id as f64, tags: String::new(), collapsed: false, updated_at: 0 };
+        let pages = [page(1, None, "Vol"), page(2, Some(1), "Cap 1"), page(3, Some(1), "Cap 2"), page(4, None, "Solta sem cartões")];
+        let n = |new| Counts { new, learn: 0, review: 0 };
+        let counts = [(9, 2, "Cap 1".into(), n(3)), (9, 3, "Cap 2".into(), n(4)), (9, 77, "Outra disciplina".into(), n(1)), (8, 4, "Outro baralho".into(), n(5))];
+        let rows = page_tree(&pages, &counts, 9);
+        let got: Vec<_> = rows.iter().map(|r| (r.title.as_str(), r.depth, r.counts.new, r.ids.clone())).collect();
+        assert_eq!(got, vec![("Vol", 0, 7, vec![1, 2, 3]), ("Cap 1", 1, 3, vec![2]), ("Cap 2", 1, 4, vec![3]), ("Outra disciplina", 0, 1, vec![77])]);
     }
 }

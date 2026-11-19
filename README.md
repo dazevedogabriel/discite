@@ -497,9 +497,10 @@ window and app icons are generated from it.
 
 ## 🙏 Credits
 
-- [Literata](https://github.com/googlefonts/literata) by TypeTogether and
-  [JetBrains Mono](https://www.jetbrains.com/lp/mono/) by JetBrains, both under
-  the SIL Open Font License.
+- [Literata](https://github.com/googlefonts/literata) by TypeTogether,
+  [JetBrains Mono](https://www.jetbrains.com/lp/mono/) by JetBrains and
+  [Noto Sans Math](https://github.com/notofonts/math) by the Noto Project
+  Authors, all under the SIL Open Font License.
 - Scheduling by [fsrs-rs](https://github.com/open-spaced-repetition/fsrs-rs),
   from the [Open Spaced Repetition](https://github.com/open-spaced-repetition)
   project.

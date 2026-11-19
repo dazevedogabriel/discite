@@ -286,10 +286,17 @@ fn send(app: &mut App, ctx: &egui::Context, from_panel: bool) {
     if question.is_empty() || app.assistant.run.is_some() {
         return;
     }
-    if !(app.cfg.ai_model == "online" && app.cfg.ai_api.ready()) {
+    // A mesma IA das Configurações: online, ou o modelo local baixado.
+    let engine = super::ai::Engine::of(app);
+    if !engine.ready() {
         app.toast(tr!("assistant.need_online"));
         return;
     }
+    let local = match &engine {
+        super::ai::Engine::Online(_) => None,
+        super::ai::Engine::Listed(m) => Some((crate::ai::models::path_of(m), app.cfg.ai_gpu)),
+        super::ai::Engine::File(p) => Some((p.clone(), app.cfg.ai_gpu)),
+    };
     // No painel, a página aberta é o contexto; salva antes para o assistente ler a versão atual.
     let context = if from_panel {
         app.page.as_mut().map(|pe| {
@@ -323,7 +330,7 @@ fn send(app: &mut App, ctx: &egui::Context, from_panel: bool) {
     st.mentions.clear();
     st.entries.push(Entry::User(question));
     let c = ctx.clone();
-    let req = agent::Request { api: app.cfg.ai_api.clone(), root: app.db.root.clone(), history: st.history.clone(), user, context, clock: app.clock };
+    let req = agent::Request { api: app.cfg.ai_api.clone(), local, root: app.db.root.clone(), history: st.history.clone(), user, context, clock: app.clock };
     st.run = Some(agent::ask(req, move || c.request_repaint()));
     save(app);
 }
@@ -820,8 +827,13 @@ fn transcript(app: &mut App, ui: &mut Ui, compact: bool) {
 
 /// Modelo em uso: o da IA online, ou um convite para configurar. Leva às Configurações.
 fn model_chip(app: &mut App, ui: &mut Ui, height: f32) {
-    let ready = app.cfg.ai_model == "online" && app.cfg.ai_api.ready();
-    let name = if ready { app.cfg.ai_api.model.trim().to_owned() } else { tr!("assistant.no_model") };
+    let engine = super::ai::Engine::of(app);
+    let ready = engine.ready();
+    let name = match (&engine, ready) {
+        (_, false) => tr!("assistant.no_model"),
+        (super::ai::Engine::Online(_), true) => engine.name(),
+        (_, true) => tr!("assistant.local_model", name = engine.name()),
+    };
     let dot: Option<Color32> = Some(if ready { pal().good } else { pal().dim });
     let resp = chip_dot(ui, &name, dot, false, height).on_hover_text(tr!("assistant.model_tip"));
     if resp.clicked() {

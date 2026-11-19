@@ -1119,6 +1119,33 @@ pub fn show(ui: &mut Ui, src: &str, size: f32, color: Color32, w: f32) -> egui::
     resp
 }
 
+/// A fórmula em SVG (para exportar), com o mesmo layout da tela. `None` se vazia.
+pub fn svg(painter: &Painter, src: &str, size: f32, color: Color32) -> Option<String> {
+    let l = Cx { painter, color }.lay(&parse(src), size);
+    if l.w <= 0.0 {
+        return None;
+    }
+    let pad = size * 0.25;
+    let (w, h) = (l.w + 2.0 * pad, l.asc + l.desc + 2.0 * pad);
+    let origin = pos2(pad, pad + l.asc);
+    let c = super::export::css(color);
+    let mut out = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w:.1}" height="{h:.1}" viewBox="0 0 {w:.1} {h:.1}" role="img"><title>{}</title>"#, super::export::esc(src));
+    for (off, it) in &l.items {
+        let o = origin + *off;
+        match it {
+            Item::Text(g, base) => super::export::text_svg(&mut out, g, pos2(o.x, o.y - base), color),
+            Item::Path(pts, t) => {
+                let pts: Vec<String> = pts.iter().map(|v| format!("{:.2},{:.2}", origin.x + v.x + off.x, origin.y + v.y + off.y)).collect();
+                out.push_str(&format!(r#"<polyline points="{}" fill="none" stroke="{c}" stroke-width="{t:.2}"/>"#, pts.join(" ")));
+            }
+            Item::Frame(s, t) => out.push_str(&format!(r#"<rect x="{:.2}" y="{:.2}" width="{:.2}" height="{:.2}" rx="2" fill="none" stroke="{c}" stroke-width="{t:.2}"/>"#, o.x, o.y, s.x, s.y)),
+            Item::Dot(r) => out.push_str(&format!(r#"<circle cx="{:.2}" cy="{:.2}" r="{r:.2}" fill="{c}"/>"#, o.x, o.y)),
+        }
+    }
+    out.push_str("</svg>");
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

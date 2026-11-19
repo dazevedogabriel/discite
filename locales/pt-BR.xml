@@ -200,6 +200,7 @@
   <string key="deck.custom_study">Estudo personalizado…</string>
   <string key="deck.add_note_here">Adicionar nota aqui</string>
   <string key="deck.view_cards">Ver cartões</string>
+  <string key="deck.open_page">Abrir página</string>
   <string key="deck.new_subdeck">Novo sub-baralho…</string>
   <string key="deck.preset_options">Opções do preset…</string>
   <string key="deck.use_preset">Usar preset</string>
@@ -211,6 +212,8 @@
   <string key="page.empty_text">Escreva anotações em páginas e subpáginas. Imagens podem ser coladas direto (Ctrl+V).</string>
   <string key="page.new_page">Nova página</string>
   <string key="page.notebook">Caderno</string>
+  <string key="page.hide_tree">Recolher a lista de páginas</string>
+  <string key="page.show_tree">Mostrar a lista de páginas</string>
   <string key="page.more_options">Mais opções do caderno</string>
   <string key="page.page_options">Opções da página</string>
   <string key="page.import_markdown">Importar Markdown…</string>
@@ -222,6 +225,10 @@
   <string key="page.move_to_subject">Mover para disciplina</string>
   <string key="page.delete">Excluir página…</string>
   <string key="page.export">Exportar</string>
+  <string key="export.pdf">PDF (visual da página)</string>
+  <string key="export.html">HTML (visual da página)</string>
+  <string key="export.epub">EPUB (livro digital)</string>
+  <string key="export.markdown">Markdown</string>
   <string key="page.history">Histórico</string>
   <string key="page.focus">Foco</string>
   <string key="page.exit_focus">Sair do foco</string>
@@ -262,6 +269,7 @@
   <string key="page.code">Código</string>
   <string key="page.formula_label">∑ Fórmula · LaTeX</string>
   <string key="page.tip">Dica</string>
+  <string key="page.tip_color">Cor da dica (etiqueta e fundo)</string>
   <string key="page.slash_hint">Digite '/' para comandos</string>
   <string key="page.blocks">Blocos</string>
   <string key="page.insert_below">Inserir bloco abaixo</string>
@@ -313,6 +321,17 @@
   <string key="block.table">Tabela</string>
   <string key="block.divider">Divisor</string>
   <string key="block.formula">Fórmula (LaTeX)</string>
+  <string key="block.diagram">Fluxograma</string>
+  <string key="page.diagram">Fluxograma</string>
+  <string key="diagram.rect">Retângulo</string>
+  <string key="diagram.pill">Arredondado</string>
+  <string key="diagram.diamond">Losango (decisão)</string>
+  <string key="diagram.edit">Editar texto</string>
+  <string key="diagram.delete">Apagar caixa</string>
+  <string key="diagram.hint_text">Texto</string>
+  <string key="diagram.empty">Clique duas vezes para criar uma caixa</string>
+  <string key="diagram.keys">Clique duplo cria · arraste ● para ligar · Ctrl+clique ou arrastar seleciona · Espaço+arrastar move a vista</string>
+  <string key="diagram.fit">Enquadrar tudo</string>
 
   <!-- Review session -->
   <string key="review.all_subjects">Todas as disciplinas</string>
@@ -872,6 +891,8 @@
   <string key="ai.generate">Gerar</string>
   <string key="ai.generate_more">Gerar mais</string>
   <string key="ai.truncated">Esta página é longa: só o começo foi mandado para a IA. Selecione um trecho para ter cartões sobre o resto.</string>
+  <string key="ai.images_ignored">A IA local não enxerga imagens: dos blocos de imagem, só as legendas foram usadas. Para usar as imagens, escolha uma IA online que as veja (como o Gemini).</string>
+  <string key="ai.from_image">Tirado de uma imagem: não dá para conferir com o texto das notas. Revise antes de adicionar.</string>
   <string key="ai.status_need_model">Baixe um modelo para começar</string>
   <string key="ai.status_ready">Escolha o que gerar e quantos, depois clique em Gerar</string>
   <string key="ai.empty_ready">Escolha acima se quer cartões ou questões objetivas, e quantos, depois clique em Gerar. Nada é criado até você adicionar as sugestões que quiser.</string>
@@ -1042,7 +1063,8 @@
   <string key="assistant.perm_read">ler notas e cartões: livre</string>
   <string key="assistant.empty_title">Pergunte às suas notas</string>
   <string key="assistant.empty_text">O assistente busca e lê as suas páginas para responder e diz de onde tirou cada coisa. Usa a IA online escolhida em Configurações.</string>
-  <string key="assistant.no_model">IA online não configurada</string>
+  <string key="assistant.no_model">IA não configurada</string>
+  <string key="assistant.local_model">{name} · local</string>
   <string key="assistant.model_tip">Trocar o modelo em Configurações</string>
   <string key="assistant.placeholder">Pergunte, cole uma foto (Ctrl V) ou peça cartões…</string>
   <string key="assistant.placeholder_short">Pergunte ou peça cartões…</string>
@@ -1056,7 +1078,7 @@
   <string key="assistant.open_page">Abrir como página</string>
   <string key="assistant.delete_chat">Excluir conversa</string>
   <string key="assistant.open_failed">Não foi possível abrir essa conversa.</string>
-  <string key="assistant.need_online">Escolha uma IA online em Configurações → IA avançada para usar o assistente.</string>
+  <string key="assistant.need_online">Escolha uma IA em Configurações (online, ou um modelo local baixado) para usar o assistente.</string>
   <string key="assistant.tool_search">Buscar notas</string>
   <string key="assistant.tool_read">Ler página</string>
   <plural key="assistant.n_pages"><one>{n} página encontrada</one><other>{n} páginas encontradas</other></plural>
