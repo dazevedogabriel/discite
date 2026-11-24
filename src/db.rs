@@ -1536,6 +1536,29 @@ mod tests {
     }
 
     #[test]
+    fn page_search_includes_subpages() {
+        let db = temp_db();
+        let s = db.add_subject("Ped", 0).unwrap();
+        let deck = db.list_decks().unwrap().into_iter().find(|d| d.subject_id == s).unwrap().id;
+        let prova = db.add_page(s, None, "Prova 01/12").unwrap();
+        let men = db.add_page(s, Some(prova), "Meningite").unwrap();
+        for src in [Some(prova), Some(men), None] {
+            let mut n = Note::new(NoteKind::Basic);
+            n.fields = vec!["F".into(), "V".into(), String::new()];
+            n.source_page = src;
+            db.add_note(&mut n, deck).unwrap();
+        }
+        let count = |q: &str| -> i64 {
+            let sql = crate::search::parse(q, &[], &[], &crate::srs::Clock { rollover_hour: 4 }, 0).sql;
+            db.conn.query_row(&format!("SELECT COUNT(*) FROM cards c JOIN notes n ON n.id = c.note_id WHERE {sql}"), [], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(count("page:meningite"), 1);
+        assert_eq!(count("página:\"Prova 01/12\""), 2, "a mãe inclui a subpágina");
+        assert_eq!(count("page:Prova*"), 2);
+        assert_eq!(count("page:nada"), 0);
+    }
+
+    #[test]
     fn chats_save_list_and_delete() {
         let db = temp_db();
         db.save_chat(1, "Primeira", "{}").unwrap();

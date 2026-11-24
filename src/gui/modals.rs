@@ -1,6 +1,6 @@
 //! Diálogos: disciplina, baralho, exclusões, informações do cartão,
 //! histórico de versões, visualizador de imagem, estudo personalizado e
-//! importação de CSV.
+//! importação de CSV e de cartões/questões colados (JSON).
 
 use super::theme::*;
 use super::widgets::*;
@@ -23,6 +23,7 @@ pub enum Modal {
     Viewer(String, f32),
     CustomStudy { deck: Option<i64>, kind: usize, days: u32, pct: u32, limit: u32, query: String },
     ImportCsv(Box<CsvImport>),
+    PasteImport(Box<PasteImport>),
     NewPreset { name: String, from: i64 },
     RenamePreset { id: i64, name: String },
     MoveCards { ids: Vec<i64>, deck: i64 },
@@ -43,6 +44,21 @@ pub struct CsvImport {
     /// Coluna → campo (None = ignorar; usize::MAX = tags).
     mapping: Vec<Option<usize>>,
     header: bool,
+}
+
+/// Cartões e questões colados como JSON, com o destino escolhido no diálogo.
+pub struct PasteImport {
+    subject: i64,
+    text: String,
+    deck: i64,
+    /// None: cria um banco novo se houver questões.
+    bank: Option<i64>,
+    page: Option<i64>,
+    banks: Vec<crate::quiz::Bank>,
+    /// Páginas da disciplina na ordem do caderno: (id, título, nível).
+    pages: Vec<(i64, String, usize)>,
+    /// Tags somadas a todos os cartões importados.
+    tags: String,
 }
 
 impl Modal {
@@ -491,6 +507,10 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 ui.set_width(620.0);
                 csv_ui(app, ui, imp, &mut keep);
             }
+            Modal::PasteImport(imp) => {
+                ui.set_width(680.0);
+                paste_ui(app, ui, imp, &mut keep);
+            }
             Modal::NewPreset { name, from } => {
                 ui.set_width(420.0);
                 title(ui, &tr!("modal.new_preset"), &tr!("modal.new_preset_text"));
@@ -602,6 +622,166 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
     if keep && app.modal.is_none() {
         app.modal = Some(modal);
     }
+}
+
+// ─────────────────────── Colar cartões e questões ───────────────────────
+
+/// Abre o diálogo de colar. `page`: a página aberta (vira a origem dos itens).
+pub fn paste_import(app: &mut App, subject: i64, page: Option<i64>) {
+    let deck = app.cfg.last_deck.filter(|d| app.deck(*d).is_some_and(|d| d.subject_id == subject)).or_else(|| app.root_decks(subject).first().map(|d| d.id)).unwrap_or(0);
+    let banks = app.db.list_banks(subject).unwrap_or_default();
+    let all: Vec<_> = app.db.all_pages().unwrap_or_default().into_iter().filter(|p| p.subject_id == subject).collect();
+    let mut pages = vec![];
+    fn walk(all: &[crate::db::PageMeta], parent: Option<i64>, depth: usize, out: &mut Vec<(i64, String, usize)>) {
+        for p in all.iter().filter(|p| p.parent_id == parent) {
+            out.push((p.id, p.title.clone(), depth));
+            walk(all, Some(p.id), depth + 1, out);
+        }
+    }
+    walk(&all, None, 0, &mut pages);
+    let bank = banks.first().map(|b| b.id);
+    app.modal = Some(Modal::PasteImport(Box::new(PasteImport { subject, text: String::new(), deck, bank, page, banks, pages, tags: String::new() })));
+}
+
+fn paste_ui(app: &mut App, ui: &mut Ui, imp: &mut PasteImport, keep: &mut bool) {
+    let p = pal();
+    title(ui, &tr!("import.title"), &tr!("import.text"));
+    if button(ui, &tr!("import.copy_prompt"), Btn::Secondary, 32.0).clicked() {
+        ui.ctx().copy_text(crate::import::prompt().to_owned());
+        app.toast(tr!("import.prompt_copied"));
+    }
+    ui.add_space(10.0);
+    egui::Frame::NONE.fill(p.input).stroke(Stroke::new(1.0, p.border_control)).corner_radius(8).inner_margin(8).show(ui, |ui| {
+        egui::ScrollArea::vertical().max_height(240.0).show(ui, |ui| {
+            ui.add(egui::TextEdit::multiline(&mut imp.text).hint_text(tr!("import.paste_here")).font(mono(12.0)).frame(egui::Frame::NONE).desired_width(f32::INFINITY).desired_rows(10));
+        });
+    });
+    // shortcut: relê o JSON a cada quadro; colagens de centenas de KB podem pesar.
+    let batch = crate::import::parse(&imp.text);
+    let cards: usize = batch.notes.iter().map(|n| crate::cards::card_ords(n.kind, &n.fields).len()).sum();
+    ui.add_space(10.0);
+    let decks: Vec<_> = app.decks.iter().filter(|d| d.subject_id == imp.subject).cloned().collect();
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 10.0;
+        ui.vertical(|ui| {
+            ui.set_width(210.0);
+            caps_label(ui, &tr!("import.deck"));
+            let cur = if imp.deck == 0 { tr!("import.no_deck") } else { app.deck_path(imp.deck) };
+            select_field(ui, "paste_deck", &cur, None, 210.0, 34.0, |ui| {
+                for d in &decks {
+                    if menu_item(ui, &app.deck_path(d.id), d.id == imp.deck).clicked() {
+                        imp.deck = d.id;
+                    }
+                }
+            });
+        });
+        ui.vertical(|ui| {
+            ui.set_width(210.0);
+            caps_label(ui, &tr!("import.bank"));
+            let cur = imp.bank.and_then(|b| imp.banks.iter().find(|x| x.id == b)).map_or_else(|| tr!("import.new_bank"), |b| b.name.clone());
+            select_field(ui, "paste_bank", &cur, None, 210.0, 34.0, |ui| {
+                for b in &imp.banks {
+                    if menu_item(ui, &b.name, imp.bank == Some(b.id)).clicked() {
+                        imp.bank = Some(b.id);
+                    }
+                }
+                if menu_item(ui, &tr!("import.new_bank"), imp.bank.is_none()).clicked() {
+                    imp.bank = None;
+                }
+            });
+        });
+        ui.vertical(|ui| {
+            ui.set_width(210.0);
+            caps_label(ui, &tr!("import.page"));
+            let cur = imp.page.and_then(|id| imp.pages.iter().find(|x| x.0 == id)).map_or_else(|| tr!("import.no_page"), |x| x.1.clone());
+            select_field(ui, "paste_page", &cur, None, 210.0, 34.0, |ui| {
+                egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                    if menu_item(ui, &tr!("import.no_page"), imp.page.is_none()).clicked() {
+                        imp.page = None;
+                    }
+                    for (id, t, depth) in &imp.pages {
+                        if menu_item(ui, &format!("{}{t}", "   ".repeat(*depth)), imp.page == Some(*id)).clicked() {
+                            imp.page = Some(*id);
+                        }
+                    }
+                });
+            });
+        });
+    });
+    ui.add_space(10.0);
+    caps_label(ui, &tr!("import.tags"));
+    text_field(ui, &mut imp.tags, &tr!("import.tags_hint"), 650.0, 34.0);
+    ui.add_space(10.0);
+    if !batch.notes.is_empty() || !batch.questions.is_empty() {
+        label(ui, &tr!("import.summary", cards = cards, notes = batch.notes.len(), questions = batch.questions.len()), serif(14.0, W::Semi), p.text);
+    }
+    if !batch.notes.is_empty() && imp.deck == 0 {
+        label(ui, &tr!("import.need_deck"), serif(13.0, W::Italic), p.again);
+    }
+    for e in batch.errors.iter().take(6) {
+        label(ui, e, serif(13.0, W::Italic), p.again);
+    }
+    if batch.errors.len() > 6 {
+        label(ui, &tr!("import.more_errors", n = batch.errors.len() - 6), serif(13.0, W::Italic), p.again);
+    }
+    let ready = (!batch.notes.is_empty() && imp.deck != 0) || !batch.questions.is_empty();
+    let (ok, cancel) = actions(ui, &tr!("import.import"), false, ready);
+    if cancel {
+        *keep = false;
+    }
+    if !ok {
+        return;
+    }
+    let mut made = 0;
+    if imp.deck != 0 {
+        for mut n in batch.notes {
+            n.source_page = imp.page;
+            let mut tags: Vec<&str> = vec![];
+            for t in n.tags.split_whitespace().chain(imp.tags.split_whitespace()).map(|t| t.trim_start_matches('#')) {
+                if !t.is_empty() && !tags.contains(&t) {
+                    tags.push(t);
+                }
+            }
+            n.tags = tags.join(" ");
+            match app.db.add_note(&mut n, imp.deck) {
+                Ok(c) => made += c,
+                Err(e) => {
+                    app.error(e);
+                    return;
+                }
+            }
+        }
+    }
+    let mut asked = 0;
+    if !batch.questions.is_empty() {
+        let bank = match imp.bank {
+            Some(b) => b,
+            None => match app.db.add_bank(imp.subject, &tr!("import.new_bank_name")) {
+                Ok(b) => b,
+                Err(e) => {
+                    app.error(e);
+                    return;
+                }
+            },
+        };
+        for q in batch.questions {
+            let mut x = crate::quiz::Question::new(bank);
+            x.stem = q.stem;
+            x.options = q.options;
+            x.answer = q.answer;
+            x.explanation = q.explanation;
+            x.source_page = imp.page;
+            if let Err(e) = app.db.save_question(&mut x) {
+                app.error(e);
+                return;
+            }
+            asked += 1;
+        }
+    }
+    app.changed();
+    app.data_version += 1;
+    app.toast(tr!("import.done", cards = made, questions = asked));
+    *keep = false;
 }
 
 // ───────────────────────────── CSV ─────────────────────────────

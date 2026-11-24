@@ -938,6 +938,9 @@ fn page_controls(app: &mut App, ed: &mut PageEditor, ui: &mut Ui, bar: Rect, act
                 export_markdown(app, ed);
             }
         });
+        if menu_item(ui, &tr!("import.menu"), false).clicked() {
+            super::modals::paste_import(app, ed.meta.subject_id, Some(ed.meta.id));
+        }
         if !ed.aside_shown {
             menu_sep(ui);
             if !card_button && menu_item_ex(ui, &tr!("page.create_flashcard"), None, false, Some(&keys("Ctrl ⇧ F"))).clicked() {
@@ -1147,6 +1150,19 @@ fn wrap_focused(ed: &mut PageEditor, marker: &str) {
 }
 
 fn color_focused(ed: &mut PageEditor, bg: bool, ink: Option<rich::Ink>) {
+    // Blocos escolhidos (arrastando ou Ctrl+clique): pinta o texto inteiro de
+    // cada um; tabelas, imagens, fluxogramas, dicas, código e fórmulas ficam como estão.
+    if !ed.picked.is_empty() {
+        for id in ed.picked.clone() {
+            let Some(i) = ed.idx(id) else { continue };
+            let b = &mut ed.blocks[i];
+            if b.kind.is_text() && !matches!(b.kind, BlockKind::Code | BlockKind::Formula | BlockKind::Callout) && !b.text.is_empty() {
+                b.text = rich::set_color(&b.text, 0, b.text.len(), bg, ink).0;
+            }
+        }
+        ed.touch();
+        return;
+    }
     let Some((id, range)) = ed.sel else { return };
     let Some(i) = ed.idx(id) else { return };
     let b = &mut ed.blocks[i];

@@ -8,6 +8,7 @@ mod db;
 mod diag;
 mod gui;
 mod i18n;
+mod import;
 mod media;
 mod quiz;
 mod rich;

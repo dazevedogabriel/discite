@@ -290,6 +290,9 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64, current: Tab) {
     if button(&mut fu, &tr!("deck.import_csv"), Btn::Ghost, 30.0).clicked() {
         super::modals::import_csv(app, sid);
     }
+    if button(&mut fu, &tr!("import.button"), Btn::Ghost, 30.0).clicked() {
+        super::modals::paste_import(app, sid, None);
+    }
     let bury = decks.first().map(|d| app.preset_of_deck(d.id).cfg.bury_siblings).unwrap_or(true);
     if bury {
         text(fu.painter(), pos2(foot.right(), foot.center().y), Align2::RIGHT_CENTER, &tr!("deck.bury_note"), serif(12.0, W::Italic), p.muted, 400.0);
@@ -338,6 +341,11 @@ fn page_row(app: &mut App, ui: &mut Ui, r: &PageRow, lvl: usize, xs: [f32; 3]) {
     resp.context_menu(|ui| {
         if menu_item(ui, &tr!("nav.study"), false).clicked() {
             study(app);
+        }
+        if menu_item(ui, &tr!("deck.view_cards"), false).clicked() {
+            app.browser.query = format!("page:\"{}\"", r.title);
+            app.browser.dirty = true;
+            app.go(Screen::Browser);
         }
         if menu_item(ui, &tr!("deck.open_page"), false).clicked() {
             app.open_page(page);

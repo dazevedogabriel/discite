@@ -176,6 +176,9 @@ pub fn ui(app: &mut App, ui: &mut Ui, sid: i64) {
     if button(&mut fu, &tr!("quiz.new_bank"), Btn::Secondary, 30.0).clicked() {
         app.modal = Some(Modal::Bank { id: None, subject: sid, name: String::new() });
     }
+    if button(&mut fu, &tr!("import.button"), Btn::Ghost, 30.0).clicked() {
+        super::modals::paste_import(app, sid, None);
+    }
     let ai = button(&mut fu, &format!("{}  ▾", tr!("quiz.generate_ai")), Btn::Ghost, 30.0);
     ai_pages_menu(app, &ai, sid, None);
     // A dica do rodapé só aparece se couber ao lado dos botões.

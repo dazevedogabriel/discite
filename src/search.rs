@@ -2,7 +2,8 @@
 //!
 //! `deck:Farmacologia is:due prop:r<0.8 lapses>1 tag:prova added:7 "texto exato"`
 //!
-//! Termos: `deck:` / `baralho:`, `subject:` / `disciplina:`, `tag:`, `is:`
+//! Termos: `deck:` / `baralho:`, `subject:` / `disciplina:`, `page:` /
+//! `página:` (página de origem e subpáginas), `tag:`, `is:`
 //! (new, learn, review, due, suspended, buried, flagged/marcado, leech),
 //! `prop:` (r, d, s, ivl, reps, lapses, due — dias a partir de hoje),
 //! `lapses>N`, `reps>N`, `added:N`, `rated:N[:nota]`, `forgot:N`, `note:`
@@ -150,6 +151,18 @@ pub fn parse(q: &str, decks: &[Deck], subjects: &[Subject], clock: &Clock, now: 
                     Some(format!("c.deck_id IN ({})", ids.join(",")))
                 }
             }
+            "page" | "página" | "pagina" => {
+                // Número: o id da página (usado por dentro do app); texto: o título.
+                // shortcut: o LIKE do SQLite só ignora maiúsculas em ASCII ("ação" ≠ "AÇÃO"); comparar em Rust se incomodar.
+                let name = esc(val.trim_matches('"')).replace('*', "%");
+                Some(if let Ok(id) = val.parse::<i64>() {
+                    format!("n.source_page = {id}")
+                } else {
+                    format!(
+                    "n.source_page IN (WITH RECURSIVE t(id) AS (SELECT id FROM pages WHERE title LIKE '{name}' AND deleted_at IS NULL UNION SELECT p.id FROM pages p JOIN t ON p.parent_id = t.id) SELECT id FROM t)"
+                    )
+                })
+            }
             "tag" => {
                 let t = esc(&val.trim_start_matches('#').to_lowercase());
                 if let Some(p) = t.strip_suffix('*') {
@@ -218,7 +231,6 @@ pub fn parse(q: &str, decks: &[Deck], subjects: &[Subject], clock: &Clock, now: 
                 let ids: Vec<String> = val.split(',').filter_map(|v| v.parse::<i64>().ok()).map(|v| v.to_string()).collect();
                 Some(if ids.is_empty() { "0".into() } else { format!("c.id IN ({})", ids.join(",")) })
             }
-            "page" | "pagina" => Some(format!("n.source_page = {}", val.parse::<i64>().unwrap_or(0))),
             "note" | "tipo" => {
                 let v = val.to_lowercase();
                 let kinds: Vec<&str> = crate::cards::NoteKind::ALL
